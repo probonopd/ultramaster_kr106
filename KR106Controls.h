@@ -1364,14 +1364,15 @@ public:
     SetDirty(false);
   }
 
-  // Called from OnIdle when Transpose turns off — clears the transpose root indicator.
-  void ClearTransposeKey()
+  // Called from OnIdle after host session restore — restores the chevron from the saved offset.
+  void SetTransposeKeyFromOffset(int semitones)
   {
-    if (mTransposeKey >= 0)
-    {
+    int key = semitones + 60 - kMinNote; // inverse of: offset = (key + kMinNote) - 60
+    if (key >= 0 && key < kNumKeys)
+      mTransposeKey = key;
+    else
       mTransposeKey = -1;
-      SetDirty(false);
-    }
+    SetDirty(false);
   }
 
 private:

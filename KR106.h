@@ -60,6 +60,7 @@ enum EParams
   kPower,
   kPortaMode,       // SW_PORTA_MODE (0=Poly, 1=Poly+Porta, 2=Unison)
   kPortaRate,       // KN_PORTA_RATE
+  kTransposeOffset, // semitone offset applied by keyboard transpose (-24..+36)
 
   kNumParams
 };
@@ -94,12 +95,17 @@ private:
   std::bitset<128> mKeyboardHeld;        // visually held notes (audio thread only)
   IPlugQueue<int> mForceRelease{16};     // notes to force-release from hold/arp (UI→audio)
   IBufferSender<2> mScopeSender;
-  std::atomic<int>  mTransposeOffset{0};  // semitone offset applied to all incoming MIDI notes
-  std::atomic<bool> mTransposeOff{false}; // set when Transpose turns off, drained in OnIdle
+  bool mHostStateLoaded = false;          // true after first UnserializeState (host restore)
+  bool mNeedChevronRestore = true;        // restore transpose chevron on first OnIdle with UI
 
 public:
   // Called from UI to individually release a held note (bypasses hold suppression).
   void ForceReleaseNote(int noteNum) { mForceRelease.Push(noteNum); }
   // Called from UI keyboard when Transpose is on — sets the semitone pitch offset.
-  void SetTransposeOffset(int semitones) { mTransposeOffset.store(semitones); }
+  void SetTransposeOffset(int semitones)
+  {
+    GetParam(kTransposeOffset)->Set((double)semitones);
+    OnParamChange(kTransposeOffset);
+    SendParameterValueFromDelegate(kTransposeOffset, GetParam(kTransposeOffset)->GetNormalized(), false);
+  }
 };

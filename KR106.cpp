@@ -67,6 +67,7 @@ KR106::KR106(const InstanceInfo& info)
   GetParam(kPower)->InitBool("Power", true);
   GetParam(kPortaMode)->InitInt("Porta Mode", 0, 0, 2); // 0=Poly, 1=Poly+Porta, 2=Unison
   GetParam(kPortaRate)->InitDouble("Porta Rate", 0., 0., 1., 0.01, "");
+  GetParam(kTransposeOffset)->InitInt("Transpose Offset", 0, -24, 36);
 
 #include "KR106_Presets.h"
 
@@ -229,9 +230,6 @@ void KR106::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
     }
   }
 
-  // Apply keyboard transpose offset (set from UI thread via mTransposeOffset atomic)
-  mDSP.SetKeyTranspose(mTransposeOffset.load());
-
   mDSP.ProcessBlock(inputs, outputs, 2, nFrames);
   if (!mPowerOn)
   {
@@ -310,6 +308,8 @@ void KR106::OnParamChange(int paramIdx)
 {
   if (paramIdx == kPower)
     mPowerOn = GetParam(kPower)->Bool();
+  else if (paramIdx == kTransposeOffset)
+    mDSP.SetKeyTranspose((int)GetParam(kTransposeOffset)->Value());
   else
   {
     mDSP.SetParam(paramIdx, GetParam(paramIdx)->Value());
@@ -320,11 +320,19 @@ void KR106::OnParamChange(int paramIdx)
 
 int KR106::UnserializeState(const IByteChunk& chunk, int startPos)
 {
+  // First call is the host restoring session state — accept all values as-is.
+  // Subsequent calls are preset changes — preserve live performance controls.
+  if (!mHostStateLoaded)
+  {
+    mHostStateLoaded = true;
+    return Plugin::UnserializeState(chunk, startPos);
+  }
+
   // Live performance controls — not part of a patch, preserve across preset changes
   static const int kLiveParams[] = {
     kTuning, kTranspose, kHold,
     kArpeggio, kArpRate, kArpMode, kArpRange,
-    kPortaMode, kPortaRate
+    kPortaMode, kPortaRate, kTransposeOffset
   };
   constexpr int nLive = sizeof(kLiveParams) / sizeof(kLiveParams[0]);
 
@@ -355,8 +363,13 @@ void KR106::OnIdle()
     auto* pKb = static_cast<KR106KeyboardControl*>(pUI->GetControlWithTag(kCtrlTagKeyboard));
     if (pKb)
     {
-      if (mTransposeOff.exchange(false))
-        pKb->ClearTransposeKey();
+      if (mNeedChevronRestore)
+      {
+        mNeedChevronRestore = false;
+        int offset = (int)GetParam(kTransposeOffset)->Value();
+        if (offset != 0)
+          pKb->SetTransposeKeyFromOffset(offset);
+      }
       IMidiMsg msg;
       while (mMidiForKeyboard.Pop(msg))
         pKb->SetNoteFromMidi(msg.NoteNumber(),
