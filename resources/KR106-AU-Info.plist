@@ -12,7 +12,7 @@
 			<key>manufacturer</key>
 			<string>UMG </string>
 			<key>name</key>
-			<string>KLR: Ultramaster KR-106</string>
+			<string>UMG: Ultramaster KR-106</string>
 			<key>sandboxSafe</key>
 			<true/>
 			<key>subtype</key>
@@ -32,7 +32,7 @@
 	<key>CFBundleGetInfoString</key>
 	<string>KR106 v1.0.0 Copyright 2001,2026 Ultramaster Group / Kayrock Screenprinting</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.KLR.audiounit.KR106</string>
+	<string>com.UMG.audiounit.KR106</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

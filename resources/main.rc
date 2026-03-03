@@ -218,8 +218,8 @@ BEGIN
             VALUE "FileDescription", "KR106"
             VALUE "InternalName", "KR106"
             VALUE "ProductName", "KR106"
-            VALUE "CompanyName", "KLR"
-            VALUE "LegalCopyright", "Copyright 2020 Acme Inc"
+            VALUE "CompanyName", "UMG"
+            VALUE "LegalCopyright", "Copyright 2001,2026 Ultramaster Group / Kayrock Screenprinting"
             VALUE "LegalTrademarks", "VST is a trademark of Steinberg Media Technologies GmbH, Audio Unit is a trademark of Apple, Inc."
         END
     END

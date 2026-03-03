@@ -1,5 +1,5 @@
 #define PLUG_NAME "Ultramaster KR-106"
-#define PLUG_MFR "KLR"
+#define PLUG_MFR "UMG"
 #define PLUG_VERSION_HEX 0x00010000
 #define PLUG_VERSION_STR "1.0.0"
 #define PLUG_UNIQUE_ID 'KR16'
@@ -10,7 +10,7 @@
 #define PLUG_CLASS_NAME KR106
 
 #define BUNDLE_NAME "KR106"
-#define BUNDLE_MFR "KLR"
+#define BUNDLE_MFR "UMG"
 #define BUNDLE_DOMAIN "com"
 
 #define PLUG_CHANNEL_IO "0-2"

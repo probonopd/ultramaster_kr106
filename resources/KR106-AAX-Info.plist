@@ -9,7 +9,7 @@
 	<key>CFBundleGetInfoString</key>
 	<string>KR106 v1.0.0 Copyright 2001,2026 Ultramaster Group / Kayrock Screenprinting</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.KLR.aax.KR106</string>
+	<string>com.UMG.aax.KR106</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
