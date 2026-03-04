@@ -1,0 +1,76 @@
+# Measured ADSR timing data from real Juno-106 factory preset recordings.
+# Format: Preset, Stage (A/D/R), Raw slider (0-1), Measured ms, Confidence, Notes
+#
+# Confidence: high = clean exponential fit or unambiguous measurement
+#             medium = some VCF interaction possible but shape is clear
+#             low = VCF envelope strongly affects perceived timing
+#
+# VCF confound: the Juno-106 shares one ADSR for both VCA and VCF.
+# During decay/release, VCF closing makes sound die faster than VCA alone.
+# Decay measurements from patches with sustain~0 are most reliable.
+# Release measurements may be compressed by VCF closure.
+#
+Preset,Stage,Raw,Measured_ms,Confidence,Notes
+A11 Brass,A,0.023622,30,medium,slider ~3/127
+A11 Brass,D,0.385827,225,medium,midpoint of 200-250 range
+A11 Brass,R,0.251969,175,medium,midpoint of 150-200 range
+A12 Brass Swell,A,0.503937,750,high,clear slow attack
+A12 Brass Swell,R,0.291339,340,medium,VCF may compress
+A16 Brass & Strings,A,0.346457,515,high,midpoint of 500-530
+A16 Brass & Strings,D,0.519685,540,medium,sustain=0.417 so VCF may affect
+A16 Brass & Strings,R,0.346457,660,medium,VCF may compress
+A18 Piano I,A,0.000000,15,high,midpoint of 13-19; slider=0 hardware minimum
+A18 Piano I,D,0.519685,925,medium,midpoint of 800-1050; tau measurement
+A18 Piano I,R,0.236220,105,medium,midpoint of 100-110
+A25 Donald Pluck,A,0.015748,3,medium,midpoint of 2-5; slider ~2/127
+A25 Donald Pluck,D,0.039370,50,medium,midpoint of 30-80; slider ~5/127
+A25 Donald Pluck,R,0.078740,10,medium,midpoint of 5-15
+A34 Brass III,A,0.456693,835,high,midpoint of 820-850; sustain=0.74 so D is VCF-confounded
+A58 Going Up,A,0.000000,8,high,slider=0 hardware min; 3 onsets measured 7-9ms
+A58 Going Up,D,0.850394,13500,high,tau fit from two long-held notes (14.7s and 12.0s); sustain~0
+A58 Going Up,R,1.000000,2800,low,tau=2.8s but VCF strongly confounds; max slider
+A67 Shaker,A,0.078740,75,medium,midpoint of 67-84; multi-bead build moderately slow
+A67 Shaker,D,0.070866,29,medium,tau est from 50% at 20ms; near A25 D=0.039→50ms range
+A67 Shaker,R,0.000000,2,medium,slider=0 hardware min; sound self-terminates
+B82 Piccolo Trumpet,A,0.023622,18,high,10-90% consistent 18-19ms across 2 notes; low VCF
+B82 Piccolo Trumpet,D,0.346457,565,medium,midpoint of 513-617ms tau; sustain~0 clean decay
+B82 Piccolo Trumpet,R,0.086614,12,high,avg 9/11/16ms across 3 notes; very clean exponential
+A24 Calliope,A,0.055118,63,medium,10-90% note 2; slider ~7/127
+A24 Calliope,R,0.047244,35,low,note 1 only; good fit RMS 4% but only 1 note measurable
+A37 Pizzicato,A,0.000000,8,medium,range 5-14ms across notes; slider=0
+A37 Pizzicato,D,0.086614,17,high,mean 16.9ms R²=0.88-0.99 across 8 notes; VCF opens during decay but tau is VCA-only
+A47 Funky I,A,0.000000,5,high,slider=0; <5ms chord stab
+A47 Funky I,D,0.236220,38,low,transient→sustain; chord phase alignment may inflate peak
+A47 Funky I,R,0.015748,12,medium,sharp key-release; no VCF confound
+A33 Xylophone,A,0.000000,3,high,<3ms; fastest slider=0 measurement
+A33 Xylophone,D,0.228346,250,medium,median of 224-294ms from 6 isolated notes; mild VCF confound
+A32 Steel Drums,A,0.000000,3,medium,3-35ms range; slider=0
+A64 Snare Drum,A,0.000000,15,high,slider=0 hardware min
+A64 Snare Drum,D,0.196850,85,medium,tau=85ms but VCF confounded; true VCA tau likely longer
+B16 Recorder,A,0.039370,31,medium,midpoint of 27-36 across 2 notes
+B16 Recorder,R,0.236220,15,high,tau=15ms both notes; minimal VCF confound verified
+A84 Dust Storm,A,0.692913,1160,low,10-90% event 2; VCF sweep dominates
+A84 Dust Storm,R,0.669291,2200,medium,final release tau=2200ms clean exponential; earlier event gave 3900ms
+B45 Noise Sweep 2,A,1.000000,2517,low,VCF sweep dominates; but near 3000ms spec max
+B54 Auto Release Noise Sweep,D,0.622047,1500,low,massive VCF confound (6-octave sweep); tau unreliable
+B66 Toy Rhodes,A,0.000000,15,high,slider=0; 10-90% clean
+B66 Toy Rhodes,D,0.700787,262,low,R²≈1 zero VCF; BUT overlapping notes may have truncated measurement — 262ms likely wrong (true decay at D=0.70 should be ~1500-3000ms)
+B33 Lute,A,0.000000,22,high,10-90% single note; slider=0
+B33 Lute,D,0.377953,311,low,single-exp summary of two-phase decay (67ms+355ms); VCF confound pulls tau down vs A76 D=0.370→622ms
+A76 Dark Synth Piano,A,0.000000,22,medium,10-90% rise; slider=0 but VCF/chorus may inflate
+A76 Dark Synth Piano,D,0.370079,622,high,tau fit sustain=0; clean exponential
+A14 Flutes,A,0.181102,150,medium,user visual estimate ~0.15s; automated 10-90% gave 30ms but likely too narrow a window
+A14 Flutes,D,0.637795,1310,high,early/late segments agree within 3%; sustain=0 no VCF confound; gold-standard measurement
+A14 Flutes,R,0.141732,67,high,stage 1 tau=67ms clean fit RMS 0.003; stage 2 (20ms) is chorus BBD bleed-through
+B12 Violin,A,0.338583,236,high,10-90% near-linear ramp; no VCF confound
+B12 Violin,D,0.354331,565,medium,tau to sustain=0.52; cross-validates B82 Piccolo Trumpet D=0.346→565ms
+B12 Violin,R,0.204724,183,low,file truncates 137ms into release; estimate ±30ms
+A15 Moving Strings,A,0.102362,100,medium,user visual ~0.1s; percussive notes; VCF may contribute
+A61 Piano II,D,0.771654,550,low,user visual: total audible decay 1.5-2s (tau≈550ms); likely VCF-compressed — lower than Flutes D=0.638→1310ms
+A61 Piano II,R,0.251969,100,medium,user visual: release tail ~0.3s (tau≈100ms); consistent with A18 Piano I R=0.236→105ms
+A31 Clock Chimes,R,0.401575,1000,low,user visual: tail still audible at 1.9s when recording ends; tau≈1000ms est; lower bound
+A66 Timpani,R,0.559055,800,low,user visual: tail still audible at 1.4s when recording ends; tau≈800ms est; lower bound
+B22 Nylon Guitar,D,0.700787,134,low,median of 9 notes 117-160ms; BUT massively non-monotonic with Flutes D=0.638→1310ms — VCF or sysex corruption
+A62 Clav.,A,0.000000,10,medium,midpoint of 5-15; slider=0 hardware minimum
+A62 Clav.,D,0.307087,15,low,transient spike collapse not true envelope decay; midpoint of 10-20
+A62 Clav.,R,0.110236,12,low,midpoint of 0-25; very fast plucked string release

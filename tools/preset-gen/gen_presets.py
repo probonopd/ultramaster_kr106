@@ -194,23 +194,23 @@ def pat_patch_to_params(p):
         0.0,                                           # kBenderDco (not stored)
         0.0,                                           # kBenderVcf (not stored)
         90.0,                                          # kArpRate (default)
-        linear(p['lfo_rate'], 18.0, 1200.0),           # kLfoRate
+        p['lfo_rate'],                                     # kLfoRate (raw 0-1 slider)
         p['lfo_delay'],                                # kLfoDelay
         p['dco_lfo'],                                  # kDcoLfo
         p['dco_pwm'],                                  # kDcoPwm
         p['dco_sub'],                                  # kDcoSub
         p['dco_noise'],                                # kDcoNoise
         p['hpf_frq'],                                  # kHpfFreq (0-3 direct)
-        exp_shape(p['vcf_frq'], 20.0, 18000.0),       # kVcfFreq
+        p['vcf_frq'],                                      # kVcfFreq (raw 0-1 slider)
         p['vcf_res'],                                  # kVcfRes
         p['vcf_env'],                                  # kVcfEnv
         p['vcf_lfo'],                                  # kVcfLfo
         p['vcf_kbd'],                                  # kVcfKbd
         p['volume'],                                   # kVcaLevel
-        pow_curve(p['env_attack'], 2.0, 2000.0),         # kEnvA
-        pow_curve(p['env_decay'], 6.0, 20000.0),        # kEnvD
-        linear(p['env_sustain'], 0.001, 1.0),           # kEnvS
-        pow_curve(p['env_release'], 6.0, 20000.0),      # kEnvR
+        p['env_attack'],                                   # kEnvA (raw 0-1 slider)
+        p['env_decay'],                                    # kEnvD (raw 0-1 slider)
+        p['env_sustain'],                                  # kEnvS (raw 0-1 slider)
+        p['env_release'],                                  # kEnvR (raw 0-1 slider)
         0,                                             # kTranspose (default off)
         0,                                             # kHold (default off)
         0,                                             # kArpeggio (default off)
@@ -246,23 +246,23 @@ def binary_patch_to_params(p):
         clamp(p['bender_dco'], 0.0, 1.0),
         clamp(p['bender_vcf'], 0.0, 1.0),
         linear(p['arpeggio_rate'], 90.0, 3000.0),
-        linear(p['lfo_rate'], 18.0, 1200.0),
+        clamp(p['lfo_rate'], 0.0, 1.0),                    # kLfoRate (raw 0-1 slider)
         clamp(p['lfo_delay'], 0.0, 1.0),
         clamp(p['dco_lfo'], 0.0, 1.0),
         clamp(p['dco_pwm'], 0.0, 1.0),
         clamp(p['dco_sub'], 0.0, 1.0),
         clamp(p['dco_noise'], 0.0, 1.0),
         int(round(p['hpf_frq'] / 0.25)),
-        exp_shape(p['vcf_frq'], 20.0, 18000.0),
+        clamp(p['vcf_frq'], 0.0, 1.0),                    # kVcfFreq (raw 0-1 slider)
         clamp(p['vcf_res'], 0.0, 1.0),
         clamp(p['vcf_env'], 0.0, 1.0),
         clamp(p['vcf_lfo'], 0.0, 1.0),
         clamp(p['vcf_kbd'], 0.0, 1.0),
         clamp(p['volume'], 0.0, 1.0),
-        pow_curve(p['env_attack'], 2.0, 2000.0),
-        pow_curve(p['env_decay'], 6.0, 20000.0),
-        linear(p['env_sustain'], 0.001, 1.0),
-        pow_curve(p['env_release'], 6.0, 20000.0),
+        clamp(p['env_attack'], 0.0, 1.0),                  # kEnvA (raw 0-1 slider)
+        clamp(p['env_decay'], 0.0, 1.0),                   # kEnvD (raw 0-1 slider)
+        clamp(p['env_sustain'], 0.0, 1.0),                  # kEnvS (raw 0-1 slider)
+        clamp(p['env_release'], 0.0, 1.0),                  # kEnvR (raw 0-1 slider)
         0,
         0,
         b(p['arpeggio_switch']),
@@ -363,12 +363,13 @@ def generate(pat_files, binary_files, out_path):
 
 
 if __name__ == '__main__':
-    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(os.path.dirname(script_dir))
     pat_files = [
-        (f'{base}/Factory_Patches.pat', 'factory'),
+        (f'{script_dir}/Factory_Patches.pat', 'factory'),
     ]
     binary_files = [
-        (f'{base}/david_churcher_patches', 'churcher', lambda i: f'Churcher {i+1:02d}'),
+        (f'{script_dir}/david_churcher_patches', 'churcher', lambda i: f'Churcher {i+1:02d}'),
     ]
-    out = f'{base}/KR106_Presets.h'
+    out = f'{project_root}/KR106_Presets.h'
     generate(pat_files, binary_files, out)

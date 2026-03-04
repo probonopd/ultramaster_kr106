@@ -7,7 +7,7 @@
 #include <atomic>
 #include <bitset>
 
-const int kNumPresets = 205;
+const int kNumPresets = 211;
 
 // Parameter indices — maps to kr106_control_t from kr106_common.h
 enum EParams

@@ -16,30 +16,25 @@ KR106::KR106(const InstanceInfo& info)
   GetParam(kDcoPwm)->InitDouble("DCO PWM", 0., 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
   GetParam(kDcoSub)->InitDouble("DCO Sub", 1., 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
   GetParam(kDcoNoise)->InitDouble("DCO Noise", 0., 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
-  GetParam(kVcfFreq)->InitDouble("VCF Freq", 700., 20., 18000., 1., "Hz",
-    IParam::kFlagsNone, "", IParam::ShapeExp());
+  GetParam(kVcfFreq)->InitDouble("VCF Freq", 0.5, 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
   GetParam(kVcfRes)->InitDouble("VCF Res", 0., 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
   GetParam(kVcfEnv)->InitDouble("VCF Env", 0., 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
   GetParam(kVcfLfo)->InitDouble("VCF LFO", 0., 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
   GetParam(kVcfKbd)->InitDouble("VCF Kbd", 0., 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
-  GetParam(kEnvS)->InitDouble("Sustain", 0.9, 0.001, 1., 0.001, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
+  GetParam(kEnvS)->InitDouble("Sustain", 0.9, 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
 
-  GetParam(kVcaLevel)->InitDouble("Volume", 1., 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
+  GetParam(kVcaLevel)->InitDouble("Volume", 0.5, 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
 
-  // --- Sliders: BPM type (linear with real range) ---
   GetParam(kArpRate)->InitDouble("Arp Rate", 120., 90., 3000., 0.1, "BPM"); // 1.5–50 Hz
-  GetParam(kLfoRate)->InitDouble("LFO Rate", 300., 18., 1200., 0.1, "BPM"); // 0.3–20 Hz
+  GetParam(kLfoRate)->InitDouble("LFO Rate", 0.24, 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
 
   // --- 4-position HPF switch: 0=bass boost, 1=flat, 2=HPF 240Hz, 3=HPF 720Hz ---
   GetParam(kHpfFreq)->InitInt("HPF", 1, 0, 3);
 
-  // --- Sliders: time type (cubic curve, hardware-calibrated ranges) ---
-  GetParam(kEnvA)->InitDouble("Attack", 50., 2., 2000., 0.1, "ms",
-    IParam::kFlagsNone, "", IParam::ShapePowCurve(3.));
-  GetParam(kEnvD)->InitDouble("Decay", 200., 6., 20000., 0.1, "ms",
-    IParam::kFlagsNone, "", IParam::ShapePowCurve(3.));
-  GetParam(kEnvR)->InitDouble("Release", 200., 6., 20000., 0.1, "ms",
-    IParam::kFlagsNone, "", IParam::ShapePowCurve(3.));
+  // --- ADSR: raw 0-1 slider values (displayed as 0-10); DSP applies curve + range ---
+  GetParam(kEnvA)->InitDouble("Attack", 0.25, 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
+  GetParam(kEnvD)->InitDouble("Decay", 0.25, 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
+  GetParam(kEnvR)->InitDouble("Release", 0.25, 0., 1., 0.01, "", IParam::kFlagsNone, "", IParam::ShapeLinear(), IParam::kUnitCustom, disp10);
 
   // --- Buttons (toggle 0/1) ---
   GetParam(kTranspose)->InitBool("Transpose", false);
@@ -128,9 +123,9 @@ KR106::KR106(const InstanceInfo& info)
     pGraphics->AttachControl(new KR106ButtonLEDControl(IRECT(122, 43, 139, 71), kHold, kYellow, ledBitmap));
     pGraphics->AttachControl(new KR106ButtonLEDControl(IRECT(154, 43, 171, 71), kArpeggio, kYellow, ledBitmap));
 
-    // Arp mode 3-way switch (175, 48), range (212, 48)
-    pGraphics->AttachControl(new KR106SwitchControl(175, 48, switch3wayBitmap, kArpMode));
-    pGraphics->AttachControl(new KR106SwitchControl(212, 48, switch3wayBitmap, kArpRange));
+    // Arp mode 3-way switch (175, 45), range (212, 45)
+    pGraphics->AttachControl(new KR106SwitchControl(175, 45, switch3wayBitmap, kArpMode));
+    pGraphics->AttachControl(new KR106SwitchControl(212, 45, switch3wayBitmap, kArpRange));
 
     // Arp rate slider (229, 33)
     pGraphics->AttachControl(new KR106SliderControl(IRECT(229, 33, 242, 82), kArpRate));
@@ -138,12 +133,12 @@ KR106::KR106(const InstanceInfo& info)
     // === LFO SECTION ===
     pGraphics->AttachControl(new KR106SliderControl(IRECT(251, 33, 264, 82), kLfoRate));
     pGraphics->AttachControl(new KR106SliderControl(IRECT(269, 33, 282, 82), kLfoDelay));
-    pGraphics->AttachControl(new KR106SwitchControl(284, 48, switch2wayBitmap, kLfoMode));
+    pGraphics->AttachControl(new KR106SwitchControl(284, 45, switch2wayBitmap, kLfoMode));
 
     // === DCO SECTION ===
     pGraphics->AttachControl(new KR106SliderControl(IRECT(316, 33, 329, 82), kDcoLfo));
     pGraphics->AttachControl(new KR106SliderControl(IRECT(334, 33, 347, 82), kDcoPwm));
-    pGraphics->AttachControl(new KR106SwitchControl(349, 48, switch3wayBitmap, kPwmMode));
+    pGraphics->AttachControl(new KR106SwitchControl(349, 45, switch3wayBitmap, kPwmMode));
 
     // DCO waveform buttons+LEDs: Pulse (377), Saw (393), Sub (409)
     pGraphics->AttachControl(new KR106ButtonLEDControl(IRECT(377, 43, 394, 71), kDcoPulse, kYellow, ledBitmap));
@@ -160,13 +155,13 @@ KR106::KR106(const InstanceInfo& info)
     // === VCF SECTION ===
     pGraphics->AttachControl(new KR106SliderControl(IRECT(496, 33, 509, 82), kVcfFreq));
     pGraphics->AttachControl(new KR106SliderControl(IRECT(513, 33, 526, 82), kVcfRes));
-    pGraphics->AttachControl(new KR106SwitchControl(535, 48, switch2wayBitmap, kVcfEnvInv));
+    pGraphics->AttachControl(new KR106SwitchControl(535, 45, switch2wayBitmap, kVcfEnvInv));
     pGraphics->AttachControl(new KR106SliderControl(IRECT(552, 33, 565, 82), kVcfEnv));
     pGraphics->AttachControl(new KR106SliderControl(IRECT(570, 33, 583, 82), kVcfLfo));
     pGraphics->AttachControl(new KR106SliderControl(IRECT(588, 33, 601, 82), kVcfKbd));
 
     // === VCA SECTION ===
-    pGraphics->AttachControl(new KR106SwitchControl(610, 48, switch2wayBitmap, kVcaMode));
+    pGraphics->AttachControl(new KR106SwitchControl(614, 45, switch2wayBitmap, kVcaMode));
     pGraphics->AttachControl(new KR106SliderControl(IRECT(638, 33, 651, 82), kVcaLevel));
 
     // === ENVELOPE SECTION ===
@@ -303,6 +298,23 @@ void KR106::OnReset()
 void KR106::ProcessMidiMsg(const IMidiMsg& msg)
 {
   TRACE;
+
+  // Handle MIDI program changes on the audio thread for sample-accurate preset switching.
+  // The host also triggers RestorePreset asynchronously, but that may arrive too late for
+  // note-ons at the same sample offset in a MIDI file.
+  if (msg.StatusMsg() == IMidiMsg::kProgramChange)
+  {
+    int pgm = msg.Program();
+    if (pgm >= 0 && pgm < NPresets())
+    {
+      RestorePreset(pgm);
+      mLastSyncedPreset = pgm;
+      for (int i = 0; i < kNumParams; i++)
+        mDSP.SetParam(i, GetParam(i)->Value());
+    }
+    return;
+  }
+
   mDSP.ProcessMidiMsg(msg);
   SendMidiMsg(msg); // MIDI output
   // Queue note-on/off for keyboard display (drained on UI thread in OnIdle).
