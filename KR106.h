@@ -98,6 +98,7 @@ private:
   bool mHostStateLoaded = false;          // true after first UnserializeState (host restore)
   bool mNeedChevronRestore = true;        // restore transpose chevron on first OnIdle with UI
   bool mRestoringPreset = false;          // true while Plugin::UnserializeState is running
+  int mLastSyncedPreset = -1;             // preset index last applied on audio thread
 
 public:
   // Called from UI to individually release a held note (bypasses hold suppression).

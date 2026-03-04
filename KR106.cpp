@@ -205,6 +205,18 @@ KR106::KR106(const InstanceInfo& info)
 #if IPLUG_DSP
 void KR106::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 {
+  // VST3 preset sync: RestorePreset runs on the controller thread but
+  // iPlug2's ProcessParameterChanges doesn't handle kPresetParam, so
+  // the DSP params may be stale when the first notes of a new preset
+  // arrive on the audio thread. Detect the change and re-push params.
+  int presetIdx = GetCurrentPresetIdx();
+  if (presetIdx != mLastSyncedPreset)
+  {
+    mLastSyncedPreset = presetIdx;
+    for (int i = 0; i < kNumParams; i++)
+      mDSP.SetParam(i, GetParam(i)->Value());
+  }
+
   if (mHoldOff.exchange(false))
   {
     for (int i = 0; i < 128; i++)

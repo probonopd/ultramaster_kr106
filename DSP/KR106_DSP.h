@@ -59,8 +59,10 @@ struct HPF
     int newMode = std::clamp(mode, 0, 3);
     if (newMode == mMode) return;
     mMode = newMode;
-    mHpS = 0.f; // reset state to avoid click on mode switch
-    mLpS = 0.f;
+    // Don't reset integrator state — TPT state variables are
+    // coefficient-independent, so the filter converges naturally
+    // from any prior state. Resetting to 0 would cause a click
+    // (the state tracks the signal's DC/LF content).
     Recalc();
   }
 

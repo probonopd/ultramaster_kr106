@@ -249,13 +249,15 @@ struct Chorus
     int oldMode = mMode;
     mMode = newMode;
 
+    // Going to OFF: just stop processing (Process returns dry when
+    // mode==0). Don't clear delay lines — during preset changes the
+    // chorus params transition through an intermediate OFF state
+    // (kChorusI processed before kChorusII), and clearing here would
+    // wipe the BBD buffers causing a level discontinuity.
     if (mMode == 0)
-    {
-      Clear();
       return;
-    }
 
-    // If coming from off, clear delay lines for clean start
+    // Coming from off: clear delay lines for clean start
     if (oldMode == 0)
     {
       mLine0.Clear();
