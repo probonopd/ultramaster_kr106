@@ -51,6 +51,7 @@ target_compile_definitions(KR106 PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
+    _USE_MATH_DEFINES
 )
 
 target_link_libraries(KR106 PRIVATE
