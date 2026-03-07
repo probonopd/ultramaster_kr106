@@ -18,6 +18,49 @@ jobs:
       - name: Build
         run: cmake --build build --config Release
 
+      - name: Import certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          echo "$APPLE_CERTIFICATE" | base64 --decode > cert.p12
+          security create-keychain -p actions build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p actions build.keychain
+          security import cert.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions build.keychain
+          rm cert.p12
+
+      - name: Sign plugins
+        run: |
+          ARTS=build/KR106_artefacts
+          if [ -d "$ARTS/Release" ]; then ARTS="$ARTS/Release"; fi
+          IDENTITY="Developer ID Application"
+          codesign --force --deep --options runtime --sign "$IDENTITY" "$ARTS/AU/KR106.component"
+          codesign --force --deep --options runtime --sign "$IDENTITY" "$ARTS/VST3/KR106.vst3"
+          codesign --force --deep --options runtime --sign "$IDENTITY" "$ARTS/Standalone/KR106.app"
+
+      - name: Notarize plugins
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          ARTS=build/KR106_artefacts
+          if [ -d "$ARTS/Release" ]; then ARTS="$ARTS/Release"; fi
+          # Create a zip for notarization submission
+          ditto -c -k --keepParent "$ARTS/AU/KR106.component" notarize-au.zip
+          ditto -c -k --keepParent "$ARTS/VST3/KR106.vst3" notarize-vst3.zip
+          ditto -c -k --keepParent "$ARTS/Standalone/KR106.app" notarize-app.zip
+          # Submit each for notarization and wait
+          xcrun notarytool submit notarize-au.zip --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          xcrun notarytool submit notarize-vst3.zip --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          xcrun notarytool submit notarize-app.zip --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          # Staple the notarization tickets
+          xcrun stapler staple "$ARTS/AU/KR106.component"
+          xcrun stapler staple "$ARTS/VST3/KR106.vst3"
+          xcrun stapler staple "$ARTS/Standalone/KR106.app"
+
       - name: Package
         run: |
           mkdir -p pkg
@@ -29,18 +72,13 @@ jobs:
           cat > pkg/INSTALL.txt << 'EOF'
           Ultramaster KR-106 — macOS Installation
 
-          1. Copy plugins to the correct locations:
+          Copy plugins to the correct locations:
 
              AU:         ~/Library/Audio/Plug-Ins/Components/
              VST3:       ~/Library/Audio/Plug-Ins/VST3/
              Standalone: Anywhere you like (e.g. /Applications)
 
-          2. Remove the quarantine flag (required for unsigned plugins):
-
-             sudo xattr -rd com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/KR106.component
-             sudo xattr -rd com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/KR106.vst3
-
-          3. Restart your DAW to scan for new plugins.
+          After copying, restart your DAW to scan for new plugins.
           EOF
           cd pkg && zip -r ../KR106-macOS.zip .
 
