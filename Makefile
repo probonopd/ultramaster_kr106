@@ -3,7 +3,7 @@ CONFIG   ?= Debug
 
 # ── JUCE / CMake targets ─────────────────────────────────────────────────────
 
-.PHONY: build run reaper clean help
+.PHONY: build run reaper clean deps help
 
 build:
 	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(CONFIG)
@@ -20,6 +20,16 @@ reaper: build
 
 clean:
 	rm -rf $(BUILD_DIR)
+
+# Linux: install JUCE build dependencies
+deps:
+	sudo apt-get update
+	sudo apt-get install -y \
+	  libasound2-dev \
+	  libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev \
+	  libfreetype-dev \
+	  libwebkit2gtk-4.1-dev \
+	  mesa-common-dev libgl-dev
 
 # ── iPlug2 / Xcode targets (legacy) ──────────────────────────────────────────
 
@@ -57,6 +67,7 @@ help:
 	@echo "    make build        Build all formats (AU, VST3, LV2, Standalone)"
 	@echo "    make run          Build and launch Standalone"
 	@echo "    make reaper       Restart Reaper with fresh VST cache"
+	@echo "    make deps         Install Linux build dependencies (apt)"
 	@echo "    make clean        Remove build directory"
 	@echo ""
 	@echo "  iPlug2 (Xcode, legacy):"
