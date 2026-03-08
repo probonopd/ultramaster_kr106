@@ -39,23 +39,22 @@ public:
         if (mProcessor && mProcessor->getParam(kPower)->getValue() <= 0.5f)
             return;
 
-        // Vertical grid lines (every w/4 pixels)
-        int wlines = w / 4;
-        for (int i = 0; i < w; i += wlines)
-        {
-            g.setColour(dim);
-            g.fillRect(static_cast<float>(i), 0.f, 1.f, static_cast<float>(h));
-        }
-        g.setColour(dim);
-        g.fillRect(static_cast<float>(w - 1), 0.f, 1.f, static_cast<float>(h));
-
-        // Horizontal grid lines every 0.5 amplitude units
+        // Grid
         float scale = kScales[mScaleIdx];
+
+        // Vertical: fixed 5 lines
+        g.setColour(dim);
+        for (int i = 0; i <= 4; i++)
+        {
+            float x = std::round(static_cast<float>(i) / 4.f * (w - 1));
+            g.fillRect(x, 0.f, 1.f, static_cast<float>(h));
+        }
+
+        // Horizontal: one line per 0.5 amplitude units (3/5/7 lines for scales 0.5/1.0/1.5)
         int numSteps = static_cast<int>(scale / 0.5f);
         for (int i = -numSteps; i <= numSteps; i++)
         {
-            float y = std::clamp(std::round((i * 0.5f / scale) * -v2 + v2),
-                                 0.f, static_cast<float>(h - 1));
+            float y = std::round((i * 0.5f / scale) * -v2 + v2);
             g.setColour(i == 0 ? mid : dim);
             g.fillRect(0.f, y, static_cast<float>(w), 1.f);
         }
@@ -64,7 +63,7 @@ public:
         if (mHasData && mDisplayLen > 1)
         {
             g.setColour(bright);
-            int lastY = v2;
+            int lastY = static_cast<int>((mDisplay[0] / scale) * -v2 + v2);
             for (int i = 0; i < w; i++)
             {
                 float pos = static_cast<float>(i) / static_cast<float>(w) * mDisplayLen;
@@ -74,7 +73,6 @@ public:
 
                 float sample = mDisplay[s0] + frac * (mDisplay[s0 + 1] - mDisplay[s0]);
                 int y = static_cast<int>((sample / scale) * -v2 + v2);
-                y = std::clamp(y, 0, h - 1);
 
                 int y1 = std::min(lastY, y);
                 int y2 = std::max(lastY, y) + 1;
@@ -164,7 +162,7 @@ public:
     }
 
 private:
-    static constexpr float kScales[3] = { 0.5f, 1.f, 2.f };
+    static constexpr float kScales[3] = { 0.5f, 1.f, 1.5f };
     int mScaleIdx = 1; // default 1.0
 
     KR106AudioProcessor* mProcessor = nullptr;

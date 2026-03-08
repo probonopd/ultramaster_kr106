@@ -38,14 +38,17 @@ struct HPF
   static constexpr float kShelfFreqHz  = 150.f;
   static constexpr float kShelfGainLin = 3.162f; // ~+10 dB
   static constexpr float kHPFFreqs[4] = { 0.f, 0.f, 240.f, 720.f };
+  static constexpr float kDCBlockHz = 5.f; // DC blocker cutoff for modes 0 & 1
 
   int   mMode = 1;
   float mSampleRate = 44100.f;
   float mG   = 0.f;
   float mHpS = 0.f;
   float mLpS = 0.f;
+  float mDcG = 0.f;  // DC blocker coefficient
+  float mDcS = 0.f;  // DC blocker state
 
-  void Init()       { mHpS = 0.f; mLpS = 0.f; }
+  void Init()       { mHpS = 0.f; mLpS = 0.f; mDcS = 0.f; }
   void SetSampleRate(float sr) { mSampleRate = sr; Recalc(); }
 
   void SetMode(int mode)
@@ -58,21 +61,34 @@ struct HPF
 
   void Recalc()
   {
+    // DC blocker (~5 Hz) — always computed, used in modes 0 & 1
+    float dcFrq = std::clamp(kDCBlockHz / (mSampleRate * 0.5f), 0.001f, 0.9f);
+    mDcG = tanf(dcFrq * static_cast<float>(M_PI) * 0.5f);
+
     if (mMode == 1) { mG = 0.f; return; }
     float fc = (mMode == 0) ? kShelfFreqHz : kHPFFreqs[mMode];
     float frq = std::clamp(fc / (mSampleRate * 0.5f), 0.001f, 0.9f);
     mG = tanf(frq * static_cast<float>(M_PI) * 0.5f);
   }
 
+  // 1-pole DC blocker: subtract LP at ~5 Hz
+  float DCBlock(float input)
+  {
+    float v = (input - mDcS) * mDcG / (1.f + mDcG);
+    float lp = mDcS + v;
+    mDcS = lp + v;
+    return input - lp;
+  }
+
   float Process(float input)
   {
-    if (mMode == 1) return input;
+    if (mMode == 1) return DCBlock(input);
     if (mMode == 0)
     {
       float v = (input - mLpS) * mG / (1.f + mG);
       float lp = mLpS + v;
       mLpS = lp + v;
-      return input + (kShelfGainLin - 1.f) * lp;
+      return DCBlock(input + (kShelfGainLin - 1.f) * lp);
     }
     float v = (input - mHpS) * mG / (1.f + mG);
     float lp = mHpS + v;

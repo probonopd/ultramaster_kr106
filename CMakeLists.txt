@@ -34,6 +34,8 @@ juce_add_binary_data(KR106BinaryData SOURCES
     resources/img/led_red@2x.png
     resources/img/kr106_bender_gradient@2x.png
     resources/img/transpose_chevron@2x.png
+    resources/img/new_knob@2x.png
+    resources/img/slider_handle@2x.png
 )
 
 target_sources(KR106 PRIVATE

@@ -83,6 +83,7 @@ public:
         {
             // Second click on held key: force release
             mKeys[key] = false;
+            mForceReleasePending[key] = true;
             if (mProcessor) mProcessor->forceReleaseNote(key + kMinNote);
             mHoldRelease = true;
             mPressedKey = -1;
@@ -111,6 +112,8 @@ public:
             return;
         }
 
+        if (mHoldRelease) return; // don't re-trigger during force release click
+
         int key = mouseToKey(e.position.x, e.position.y);
         if (key == mPressedKey) return;
         if (mPressedKey >= 0)
@@ -128,7 +131,6 @@ public:
         {
             mPressedKey = -1;
         }
-        mHoldRelease = false;
         repaint();
     }
 
@@ -156,6 +158,16 @@ public:
         {
             if (i == mPressedKey) continue; // don't override mouse-pressed key
             bool held = mProcessor->mKeyboardHeld.test(i + kMinNote);
+            if (mForceReleasePending[i])
+            {
+                // Don't re-light until audio thread has processed the release
+                if (!held)
+                {
+                    mForceReleasePending[i] = false;
+                    if (mKeys[i]) { mKeys[i] = false; changed = true; }
+                }
+                continue;
+            }
             if (mKeys[i] != held)
             {
                 mKeys[i] = held;
@@ -464,6 +476,7 @@ private:
     KR106AudioProcessor* mProcessor = nullptr;
     juce::Image mChevronImage;
     bool mKeys[kNumKeys] = {};
+    bool mForceReleasePending[kNumKeys] = {};
     int mPressedKey = -1;
     int mTransposeKey = -1;
     bool mHoldRelease = false;

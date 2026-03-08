@@ -1,0 +1,212 @@
+Index,Name,Category
+0,A11 Brass,Brass
+1,A12 Brass Swell,Brass
+2,A13 Trumpet,Brass
+5,A16 Brass & Strings,Brass
+19,A34 Brass III,Brass
+20,A35 Fanfare,Brass
+26,A43 Brass Ensemble,Brass
+80,B31 Brass,Brass
+100,B55 Brass Ensemble,Brass
+119,B78 Brassy Organ,Brass
+121,B82 Piccolo Trumpet,Brass
+169,Brass,Brass
+175,French horn,Brass
+31,A48 Synth Bass I,Bass
+36,A55 Synth Bass II,Bass
+87,B38 Bass Pluck,Bass
+111,B68 OW Bass,Bass
+114,B73 Meow Bass,Bass
+128,Acid bass,Bass
+129,Another echo bass,Bass
+130,Bell bass,Bass
+131,Jungle bass,Bass
+132,LFO wow bass,Bass
+133,Nasty bass,Bass
+134,Nasty bass from the pits (use unison),Bass
+135,Quiet bass,Bass
+136,Resonant bass,Bass
+137,Sick resonant bass,Bass
+138,Slow LFO string bass,Bass
+139,"Thick bass, use with mono mode",Bass
+140,Very dull sub bass,Bass
+141,Wobbly bass,Bass
+142,Yer average fat bass,Bass
+143,Bowed bass,Bass
+144,Buzzy sub-bass,Bass
+145,Extremely nice bass patch,Bass
+146,Fast LFO bass,Bass
+147,Funky noise bass,Bass
+148,Funky slightly less noisy bass,Bass
+149,Sub bass,Bass
+151,Throbbing Gristle noise bass,Bass
+172,Echo string bass,Bass
+185,Slow release acid,Bass
+200,Nasty bass from the pits (use unison) (2),Bass
+201,Another echo bass (2),Bass
+32,A51 Lead I,Lead
+33,A52 Lead II,Lead
+34,A53 Lead III,Lead
+170,Buzzy synth lead,Lead
+173,Excessive PWM lead sound,Lead
+174,Fearsome lead patch,Lead
+178,Nice non-stringy wow lead,Lead
+190,Stylophone,Lead
+202,Excessive PWM lead sound (2),Lead
+203,Nice non-stringy wow lead (2),Lead
+204,Fearsome lead patch (2),Lead
+7,A18 Piano I,Piano/Keys
+8,A21 Organ I,Piano/Keys
+9,A22 Organ II,Piano/Keys
+10,A23 Combo Organ,Piano/Keys
+13,A26 Celeste,Piano/Keys
+14,A27 Elect. Piano I,Piano/Keys
+15,A28 Elect. Piano II,Piano/Keys
+18,A33 Xylophone,Piano/Keys
+40,A61 Piano II,Piano/Keys
+41,A62 Clav.,Piano/Keys
+42,A63 Frontier Organ,Piano/Keys
+53,A76 Dark Synth Piano,Piano/Keys
+66,B13 Chorus Vibes,Piano/Keys
+67,B14 Organ I,Piano/Keys
+68,B15 Harpsichord I,Piano/Keys
+73,B22 Nylon Guitar,Piano/Keys
+76,B25 Organ Bell,Piano/Keys
+77,B26 Accordion,Piano/Keys
+89,B42 Harpsichord 2,Piano/Keys
+96,B51 Clav,Piano/Keys
+97,B52 Organ 2,Piano/Keys
+104,B61 E. Piano with Tremolo,Piano/Keys
+107,B64 Reedy Organ,Piano/Keys
+109,B66 Toy Rhodes,Piano/Keys
+127,B88 Owgan,Piano/Keys
+153,Synth piano,Piano/Keys
+154,Disturbed piano,Piano/Keys
+155,Ghost piano,Piano/Keys
+156,Ghost piano going backwards,Piano/Keys
+157,Shadow ghost echo piano,Piano/Keys
+158,Shadow ghost echo piano in a forest,Piano/Keys
+159,Shadow ghost piano,Piano/Keys
+160,Slow LFO piano,Piano/Keys
+3,A14 Flutes,Pad/Strings
+4,A15 Moving Strings,Pad/Strings
+6,A17 Choir,Pad/Strings
+21,A36 Strings III,Pad/Strings
+22,A37 Pizzicato,Pad/Strings
+23,A38 High Strings,Pad/Strings
+47,A68 Synth Pad,Pad/Strings
+54,A77 Sustainer,Pad/Strings
+64,B11 Strings,Pad/Strings
+65,B12 Violin,Pad/Strings
+74,B23 Orchestral Pad,Pad/Strings
+90,B43 Dark Ensemble,Pad/Strings
+94,B47 Phase Ensemble,Pad/Strings
+115,B74 Violin (high),Pad/Strings
+120,B81 Low Dark Strings,Pad/Strings
+122,B83 Cello,Pad/Strings
+123,B84 High Strings,Pad/Strings
+171,Classic string sound,Pad/Strings
+179,Pizzicato ha ha ha,Pad/Strings
+180,PWM string wash,Pad/Strings
+181,Reclusive string pad,Pad/Strings
+184,Short bright string patch,Pad/Strings
+195,Thin strings,Pad/Strings
+198,Wobbly mad strings,Pad/Strings
+11,A24 Calliope,Effects/SFX
+16,A31 Clock Chimes,Effects/SFX
+38,A57 Thud Wah,Effects/SFX
+39,A58 Going Up,Effects/SFX
+48,A71 Sweep I,Effects/SFX
+49,A72 Pluck Sweep,Effects/SFX
+51,A74 Sweep II,Effects/SFX
+55,A78 Wah Release,Effects/SFX
+56,A81 Gong,Effects/SFX
+58,A83 Drum Booms,Effects/SFX
+59,A84 Dust Storm,Effects/SFX
+60,A85 Rocket Men,Effects/SFX
+62,A87 FX Sweep,Effects/SFX
+63,A88 Caverns,Effects/SFX
+71,B18 Noise Sweep,Effects/SFX
+72,B21 Space Chimes,Effects/SFX
+78,B27 FX Rise 1,Effects/SFX
+79,B28 FX Rise 2,Effects/SFX
+81,B32 Helicopter,Effects/SFX
+85,B36 FX Sweep 1,Effects/SFX
+88,B41 Resonant Rise,Effects/SFX
+91,B44 Contact Wah,Effects/SFX
+92,B45 Noise Sweep 2,Effects/SFX
+93,B46 Glassy Wah,Effects/SFX
+95,B48 Chorused Bell,Effects/SFX
+99,B54 Auto Release Noise Sweep,Effects/SFX
+102,B57 Chorus Bell 2,Effects/SFX
+103,B58 Blizzard,Effects/SFX
+106,B63 Thunder,Effects/SFX
+110,B67 Surf's Up,Effects/SFX
+116,B75 High Bells,Effects/SFX
+117,B76 Rolling Wah,Effects/SFX
+118,B77 Ping Bell,Effects/SFX
+124,B85 Rocket Men,Effects/SFX
+125,B86 Forbidden Planet,Effects/SFX
+150,Throbbing Gristle loud noise,Effects/SFX
+152,Throbbing Gristle noise treble,Effects/SFX
+176,Harsh self-oscillation,Effects/SFX
+177,Long phase noise resonance,Effects/SFX
+182,Repeated wow,Effects/SFX
+183,Resonant release,Effects/SFX
+186,Soft backwards sound,Effects/SFX
+187,Stoopid bubbly noisy sound,Effects/SFX
+189,Stupid noisy noise,Effects/SFX
+191,Sweeping down no noise,Effects/SFX
+192,Sweeping down noise,Effects/SFX
+194,The Resonance That Wouldn't Die,Effects/SFX
+196,Wacky LFO resonance,Effects/SFX
+197,Wacky noise bubbles,Effects/SFX
+199,Just Noise (tm),Effects/SFX
+12,A25 Donald Pluck,Other
+17,A32 Steel Drums,Other
+24,A41 Bass Clarinet,Other
+25,A42 English Horn,Other
+27,A44 Guitar,Other
+28,A45 Koto,Other
+29,A46 Dark Pluck,Other
+30,A47 Funky I,Other
+35,A54 Funky II,Other
+37,A56 Funky III,Other
+43,A64 Snare Drum,Other
+44,A65 Tom Toms,Other
+45,A66 Timpani,Other
+46,A67 Shaker,Other
+50,A73 Repeater,Other
+52,A75 Pluck Bell,Other
+57,A82 Resonance Funk,Other
+61,A86 Hand Claps,Other
+69,B16 Recorder,Other
+70,B17 Perc. Pluck,Other
+75,B24 Bright Pluck,Other
+82,B33 Lute,Other
+83,B34 Chorus Funk,Other
+84,B35 Tomita,Other
+86,B37 Sharp Reed,Other
+98,B53 Bassoon,Other
+101,B56 Ethereal,Other
+105,B62 Clarinet,Other
+108,B65 Flute - Horn,Other
+112,B71 Piccolo,Other
+113,B72 Melodic Taps,Other
+126,B87 Froggy,Other
+161,Sick of making up patch names already?,Other
+162,Very quiet thump,Other
+163,Tom Thump,Other
+164,Could be a snare,Other
+165,Descending pulsating thump,Other
+166,Dull sneeze snare,Other
+167,Pulsating thump,Other
+168,Bottle blow,Other
+188,Strange quiet accidental patch,Other
+193,Synth Clarinet,Other
+205,Churcher 01,Other
+206,Churcher 02,Other
+207,Churcher 03,Other
+208,Churcher 04,Other
+209,Churcher 05,Other
+210,Churcher 06,Other
