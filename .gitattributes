@@ -1,0 +1,25 @@
+# Normalize line endings for text files
+* text=auto
+
+# Source code
+*.h text
+*.cpp text
+*.c text
+*.cmake text
+*.txt text
+*.md text
+*.yml text
+*.yaml text
+*.json text
+*.py text
+
+# Scripts
+Makefile text
+*.sh text eol=lf
+
+# Binary assets — do not diff or merge
+*.png binary
+*.psd binary
+*.ico binary
+*.ttf binary
+*.wav binary

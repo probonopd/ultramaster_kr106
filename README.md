@@ -1,10 +1,19 @@
 # Ultramaster KR-106
 
+[![Release](https://github.com/kayrockscreenprinting/ultramaster_kr106/actions/workflows/release.yml/badge.svg)](https://github.com/kayrockscreenprinting/ultramaster_kr106/actions/workflows/release.yml)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+
 A synthesizer plugin emulating the Roland Juno-106, built with [JUCE](https://juce.com/).
+
+![KR-106 Screenshot](docs/screenshot.png)
 
 6-voice polyphonic with per-voice analog variance, TPT ladder filter with OTA saturation,
 BBD chorus emulation, arpeggiator, portamento/unison mode, and 211 factory presets.
-Builds as AU, VST3, LV2, and Standalone on macOS and Linux.
+
+**Formats:** AU, VST3, LV2, Standalone
+**Platforms:** macOS (13+), Windows, Linux
+
+**[Download latest release](https://github.com/kayrockscreenprinting/ultramaster_kr106/releases/latest)**
 
 See [docs/DSP_ARCHITECTURE.md](docs/DSP_ARCHITECTURE.md) for a detailed writeup of the
 signal chain and emulation techniques.
@@ -18,9 +27,22 @@ Requires **CMake** (3.22+) and **Xcode** (or Command Line Tools).
 ```bash
 git clone --recursive https://github.com/kayrockscreenprinting/ultramaster_kr106.git
 cd ultramaster_kr106
-make build    # AU, VST3, LV2, Standalone
+make build    # AU, VST3, Standalone
 make run      # Build and launch Standalone
 ```
+
+### Windows
+
+Requires **CMake** (3.22+) and **Visual Studio 2022** (or Build Tools with C++ workload).
+
+```bash
+git clone --recursive https://github.com/kayrockscreenprinting/ultramaster_kr106.git
+cd ultramaster_kr106
+cmake -B build
+cmake --build build --config Release
+```
+
+Plugins are output to `build/KR106_artefacts/Release/`.
 
 ### Linux
 
@@ -74,6 +96,11 @@ docs/
 tools/preset-gen/              Original patch files and conversion utilities
 ```
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on submitting issues and pull requests.
+
 ## License
 
 This project is licensed under the [GNU General Public License v3.0](LICENSE).
+Third-party library licenses are listed in [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES).
