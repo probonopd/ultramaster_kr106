@@ -77,8 +77,9 @@ KR106AudioProcessor::KR106AudioProcessor()
     return juce::String(juce::roundToInt(t)) + " ms";
   };
   // Juno-6 slider→tau formulas (must match KR106_DSP_SetParam.h)
+  // Attack tooltip shows tau directly (1ms–3s). Decay/release show 3*tau (≈95% completion).
   auto j6AttackMs = [](float s) { return 0.001f * std::pow(3000.f, s) * 1000.f; };
-  auto j6DecayMs  = [](float s) { return 0.004f * std::pow(1000.f, s) * 1000.f; };
+  auto j6DecayMs  = [](float s) { return 0.004f * std::pow(1000.f, s) * 3000.f; };
 
   auto fmtMs = [this](const float* lut106, std::function<float(float)> j6Fn) -> SFV {
     return [this, lut106, j6Fn](float v, int) {

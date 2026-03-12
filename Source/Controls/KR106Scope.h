@@ -202,7 +202,10 @@ private:
         }
     }
 
-    // ---- ADSR envelope display ----
+    // ---- ADSR envelope display (split view) ----
+    // Top half: ADS (attack + decay + sustain fill)
+    // Bottom half: SR (sustain fill + release curve)
+    // Both halves use a fixed 15s time window.
     void paintADSR(juce::Graphics& g, int w, int h,
                    juce::Colour dim, juce::Colour mid, juce::Colour bright)
     {
@@ -211,114 +214,185 @@ private:
         using DSP = KR106DSP<float>;
         auto& dsp = mProcessor->mDSP;
 
-        // Read current ADSR parameters
+        // --- Read ADSR parameters ---
         bool j6 = (dsp.mAdsrMode == 0);
+        float sustain = std::max(mProcessor->getParam(kEnvS)->getValue(), 0.001f);
+
+        // Constants matching KR106ADSR.h
+        static constexpr float kAttackTarget    = 1.2f;
+        static constexpr float kDecayUndershoot = -0.1f;
+        static constexpr float kReleaseTarget   = -0.1f;
+        static constexpr float kMinLevel        = 0.001f;
+        static constexpr float kWindowMsJ6  = 15000.f;
+        static constexpr float kWindowMs106 = 27500.f;
+
+        // Compute times and coefficients per mode
         float attackMs, decayMs, releaseMs;
-        if (j6) {
-            // Juno-6: exponential slider→tau formulas (must match KR106_DSP_SetParam.h)
-            attackMs  = 0.001f * std::pow(3000.f, dsp.mSliderA) * 1000.f;
-            decayMs   = 0.004f * std::pow(1000.f, dsp.mSliderD) * 1000.f;
-            releaseMs = 0.004f * std::pow(1000.f, dsp.mSliderR) * 1000.f;
-        } else {
+        float attackCoeff = 0.f, decayCoeff = 0.f, releaseCoeff = 0.f;
+        float decayMul = 0.f, releaseMul = 0.f;
+
+        if (j6)
+        {
+            // Juno-6: tau in seconds (must match KR106_DSP_SetParam.h)
+            float attackTau  = 0.001f * std::pow(3000.f, dsp.mSliderA);
+            float decayTau   = 0.004f * std::pow(1000.f, dsp.mSliderD);
+            float releaseTau = 0.004f * std::pow(1000.f, dsp.mSliderR);
+
+            // Per-ms coefficients (matching ADSR per-sample coeff but at 1kHz)
+            attackCoeff  = 1.f - expf(-0.001f / attackTau);
+            decayCoeff   = 1.f - expf(-0.001f / decayTau);
+            releaseCoeff = 1.f - expf(-0.001f / releaseTau);
+
+            // Approximate completion times for phase boundaries
+            // Attack: solve kAttackTarget*(1-(1-c)^n) = 1.0
+            attackMs = -logf(1.f - 1.f / kAttackTarget) / -logf(1.f - attackCoeff);
+            // Decay/release: 3*tau ≈ 95% completion (matches tooltip)
+            decayMs   = decayTau * 3000.f;
+            releaseMs = releaseTau * 3000.f;
+        }
+        else
+        {
+            // Juno-106: ms from LUT
             attackMs  = DSP::LookupLUT(DSP::kAttackLUT,  dsp.mSliderA);
             decayMs   = DSP::LookupLUT(DSP::kDecayLUT,   dsp.mSliderD);
             releaseMs = DSP::LookupLUT(DSP::kReleaseLUT, dsp.mSliderR);
+
+            // Per-ms multipliers
+            decayMul   = (decayMs > 0.f)   ? expf(logf(kMinLevel) / decayMs)   : kMinLevel;
+            releaseMul = (releaseMs > 0.f) ? expf(logf(kMinLevel) / releaseMs) : kMinLevel;
         }
-        float sustain   = std::max(mProcessor->getParam(kEnvS)->getValue(), 0.001f);
 
-        // Sustain display length: proportional to max(D, R), clamped
-        float sustainMs = std::clamp(0.5f * std::max(decayMs, releaseMs), 50.f, 2000.f);
+        float kWindowMs = j6 ? kWindowMsJ6 : kWindowMs106;
 
-        float totalMs = attackMs + decayMs + sustainMs + releaseMs;
+        // --- Layout ---
+        int hTop = h / 2;
+        int hBot = h - hTop - 1; // 1px divider
+        int yDivider = hTop;
+        int yBotStart = hTop + 1;
 
-        // Phase boundaries as fractions of total time
-        float tA = attackMs / totalMs;
-        float tD = (attackMs + decayMs) / totalMs;
-        float tS = (attackMs + decayMs + sustainMs) / totalMs;
-        // tR = 1.0
-
-        // Vertical phase boundary lines (A|D, D|S, S|R) — always interior
+        // Horizontal divider line
         g.setColour(dim);
-        float xA = std::round(tA * (w - 1));
-        float xD = std::round(tD * (w - 1));
-        float xS = std::round(tS * (w - 1));
-        g.fillRect(xA, 0.f, 1.f, static_cast<float>(h));
-        g.fillRect(xD, 0.f, 1.f, static_cast<float>(h));
-        g.fillRect(xS, 0.f, 1.f, static_cast<float>(h));
+        g.fillRect(0.f, static_cast<float>(yDivider), static_cast<float>(w), 1.f);
 
-        // Sustain level horizontal line (skip if at top or bottom edge)
-        float sustainY = std::round((1.f - sustain) * (h - 1));
-        if (sustainY > 0.f && sustainY < static_cast<float>(h - 1))
+        // Phase boundaries as pixel positions within 15s window
+        float xAD = std::round(std::min(attackMs / kWindowMs, 1.f) * (w - 1));
+        float xDD = std::round(std::min((attackMs + decayMs) / kWindowMs, 1.f) * (w - 1));
+        float xSR = std::round(std::max(1.f - releaseMs / kWindowMs, 0.f) * (w - 1));
+
+        // A|D and D|S boundary lines (top half)
+        g.setColour(dim);
+        if (xAD > 0.f && xAD < w - 1)
+            g.fillRect(xAD, 0.f, 1.f, static_cast<float>(hTop));
+        if (xDD > xAD && xDD < w - 1)
+            g.fillRect(xDD, 0.f, 1.f, static_cast<float>(hTop));
+
+        // S|R boundary line (bottom half)
+        if (xSR > 0.f && xSR < w - 1)
+            g.fillRect(xSR, static_cast<float>(yBotStart), 1.f, static_cast<float>(hBot));
+
+        // Sustain level lines (both halves)
+        float susYTop = std::round((1.f - sustain) * (hTop - 1));
+        float susYBot = std::round((1.f - sustain) * (hBot - 1)) + yBotStart;
+        g.setColour(dim);
+        if (susYTop > 0.f && susYTop < hTop - 1)
+            g.fillRect(0.f, susYTop, static_cast<float>(w), 1.f);
+        if (susYBot > yBotStart && susYBot < yBotStart + hBot - 1)
+            g.fillRect(0.f, susYBot, static_cast<float>(w), 1.f);
+
+        // --- Envelope evaluation helper ---
+        // Returns envelope value [0, 1] given elapsed ms and phase
+        auto evalEnv = [&](float ms, int phase) -> float
         {
-            g.setColour(dim);
-            g.fillRect(0.f, sustainY, static_cast<float>(w), 1.f);
-        }
-
-        // ADSR time constants for exponential math
-        static constexpr float kMinLevel = 0.001f; // -60dB
-        static constexpr float kAttackTarget = 1.5f;
-
-        // Precompute per-ms rates
-        float decayMul = (decayMs > 0.f) ? expf(logf(kMinLevel) / decayMs) : kMinLevel;
-        float releaseMul = (releaseMs > 0.f) ? expf(logf(kMinLevel) / releaseMs) : kMinLevel;
-        float attackCoeff = 0.f;
-        if (j6 && attackMs > 0.f)
-            attackCoeff = 1.f - expf(-logf(3.f) / attackMs);
-
-        // Draw the curve
-        g.setColour(bright);
-        int lastY = h - 1; // start at baseline
-
-        for (int px = 0; px < w; px++)
-        {
-            float t = static_cast<float>(px) / static_cast<float>(w - 1);
+            // phase: 0=attack, 1=decay, 2=sustain, 3=release
             float env = 0.f;
-
-            if (t <= tA)
+            if (phase == 0)
             {
-                // Attack phase
-                float frac = (tA > 0.f) ? t / tA : 1.f;
-                float ms = frac * attackMs;
                 if (j6)
                 {
-                    // RC exponential: env = kAttackTarget * (1 - (1-coeff)^ms)
-                    // Simulating: env += (kAttackTarget - env) * coeff each ms
                     env = kAttackTarget * (1.f - powf(1.f - attackCoeff, ms));
                     if (env > 1.f) env = 1.f;
                 }
                 else
                 {
-                    // Linear ramp
                     env = (attackMs > 0.f) ? ms / attackMs : 1.f;
                     if (env > 1.f) env = 1.f;
                 }
             }
-            else if (t <= tD)
+            else if (phase == 1)
             {
-                // Decay phase: exponential from 1.0 toward 0, stopped at sustain
-                float frac = (tD > tA) ? (t - tA) / (tD - tA) : 1.f;
-                float ms = frac * decayMs;
-                env = powf(decayMul, ms);
-                if (env < sustain) env = sustain;
+                if (j6)
+                {
+                    float target = sustain + kDecayUndershoot;
+                    env = target + (1.f - target) * powf(1.f - decayCoeff, ms);
+                    if (env < sustain) env = sustain;
+                }
+                else
+                {
+                    env = powf(decayMul, ms);
+                    if (env < sustain) env = sustain;
+                }
             }
-            else if (t <= tS)
+            else if (phase == 2)
             {
-                // Sustain phase: flat
                 env = sustain;
             }
-            else
+            else // release
             {
-                // Release phase: exponential from sustain toward 0
-                float frac = (1.f > tS) ? (t - tS) / (1.f - tS) : 1.f;
-                float ms = frac * releaseMs;
-                env = sustain * powf(releaseMul, ms);
+                if (j6)
+                {
+                    env = kReleaseTarget + (sustain - kReleaseTarget) * powf(1.f - releaseCoeff, ms);
+                    if (env < 0.f) env = 0.f;
+                }
+                else
+                {
+                    env = sustain * powf(releaseMul, ms);
+                }
             }
+            return std::clamp(env, 0.f, 1.f);
+        };
 
-            int y = static_cast<int>(std::round((1.f - env) * (h - 1)));
+        // --- Draw top half: ADS ---
+        g.setColour(bright);
+        int lastY = hTop - 1;
 
+        for (int px = 0; px < w; px++)
+        {
+            float ms = (static_cast<float>(px) / static_cast<float>(w - 1)) * kWindowMs;
+            float env;
+
+            if (ms < attackMs)
+                env = evalEnv(ms, 0);
+            else if (ms < attackMs + decayMs)
+                env = evalEnv(ms - attackMs, 1);
+            else
+                env = evalEnv(0.f, 2); // sustain fill
+
+            int y = static_cast<int>(std::round((1.f - env) * (hTop - 1)));
             int y1 = std::min(lastY, y);
             int y2 = std::max(lastY, y) + 1;
             g.fillRect(static_cast<float>(px), static_cast<float>(y1),
+                       1.f, static_cast<float>(y2 - y1));
+            lastY = y;
+        }
+
+        // --- Draw bottom half: SR ---
+        lastY = static_cast<int>(std::round((1.f - sustain) * (hBot - 1)));
+
+        for (int px = 0; px < w; px++)
+        {
+            float ms = (static_cast<float>(px) / static_cast<float>(w - 1)) * kWindowMs;
+            float releaseStartMs = kWindowMs - releaseMs;
+            float env;
+
+            if (ms < releaseStartMs)
+                env = evalEnv(0.f, 2); // sustain fill
+            else
+                env = evalEnv(ms - releaseStartMs, 3);
+
+            int y = static_cast<int>(std::round((1.f - env) * (hBot - 1)));
+            int y1 = std::min(lastY, y);
+            int y2 = std::max(lastY, y) + 1;
+            g.fillRect(static_cast<float>(px), static_cast<float>(y1 + yBotStart),
                        1.f, static_cast<float>(y2 - y1));
             lastY = y;
         }
