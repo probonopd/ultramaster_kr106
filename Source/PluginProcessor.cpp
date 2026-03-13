@@ -49,8 +49,9 @@ KR106AudioProcessor::KR106AudioProcessor()
     if (hz >= 1000.0) return juce::String(hz / 1000.0, 1) + " kHz";
     return juce::String(juce::roundToInt(hz)) + " Hz";
   };
-  SFV fmtLfoRate = [](float v, int) {
-    double hz = (18.0 + (double)v * 1182.0) / 60.0;
+  SFV fmtLfoRate = [this](float v, int) {
+    float hz = (mDSP.mAdsrMode == 0) ? kr106::LFO::lfoFreqJ6(v)
+                                      : kr106::LFO::lfoFreqJ106(v);
     return juce::String(hz, 1) + " Hz";
   };
   SFV fmtLfoDelay = [](float v, int) {
@@ -62,19 +63,18 @@ KR106AudioProcessor::KR106AudioProcessor()
     if (dB >= 0.0) return "+" + juce::String(dB, 1) + " dB";
     return juce::String(dB, 1) + " dB";
   };
-  SFV fmtArpBpm = [](float v, int) {
-    return juce::String(juce::roundToInt(v)) + " bpm";
-  };
   SFV fmtTuning = [](float v, int) {
     double cents = (double)v * 100.0;
     if (cents >= 0.0) return "+" + juce::String(juce::roundToInt(cents)) + " cents";
     return juce::String(juce::roundToInt(cents)) + " cents";
   };
   SFV fmtPorta = [](float v, int) {
-    if (v < 0.01f) return juce::String("Off");
-    double t = (double)v * (double)v * (double)v * 3000.0;
-    if (t >= 1000.0) return juce::String(t / 1000.0, 2) + " s";
-    return juce::String(juce::roundToInt(t)) + " ms";
+    float semiPerSec = kr106::Voice<float>::portaRate(v);
+    if (semiPerSec <= 0.f) return juce::String("Off");
+    // Time for one octave (12 semitones)
+    double ms = 12000.0 / (double)semiPerSec;
+    if (ms >= 1000.0) return juce::String(ms / 1000.0, 2) + " s/oct";
+    return juce::String(juce::roundToInt(ms)) + " ms/oct";
   };
   using ADSR = kr106::ADSR;
   auto fmtAtkMs = [this](float v, int) -> juce::String {
@@ -95,23 +95,23 @@ KR106AudioProcessor::KR106AudioProcessor()
   addSlider(kBenderVcf,  "Bender VCF",  0.f, 0.f, 1.f, fmtPct);
   addSlider(kBenderLfo,  "Bender LFO",  0.f, 0.f, 1.f, fmtPct);
 
-  // Arp rate (BPM range — DSP expects raw BPM value)
-  {
-    auto attrs = juce::AudioParameterFloatAttributes()
-                   .withStringFromValueFunction(fmtArpBpm);
-    auto* p = new juce::AudioParameterFloat(
-      juce::ParameterID("p" + juce::String(kArpRate), 1), "Arp Rate",
-      juce::NormalisableRange<float>(15.f, 1800.f, 0.1f, 0.3f), 120.f, attrs);
-    addParameter(p);
-    mParams[kArpRate] = p;
-  }
+  addSlider(kArpRate, "Arp Rate", 0.06f, 0.f, 1.f, [](float v, int) {
+    return juce::String(juce::roundToInt(kr106::Arpeggiator::arpRate(v))) + " bpm";
+  });
+
+  
 
   // LFO
   addSlider(kLfoRate,    "LFO Rate",    0.24f, 0.f, 1.f, fmtLfoRate);
   addSlider(kLfoDelay,   "LFO Delay",   0.f,   0.f, 1.f, fmtLfoDelay);
 
   // DCO
-  addSlider(kDcoLfo,     "DCO LFO",     0.f, 0.f, 1.f, fmtPct);
+  addSlider(kDcoLfo,     "DCO LFO",     0.f, 0.f, 1.f, [this](float v, int) {
+    float st = (mDSP.mAdsrMode == 0) ? kr106::Voice<float>::dcoLfoDepth6(v)
+                                      : kr106::Voice<float>::dcoLfoDepth106(v);
+    if (st < 0.05f) return juce::String("Off");
+    return juce::String(st, 1) + " st";
+  });
   addSlider(kDcoPwm,     "DCO PWM",     0.f, 0.f, 1.f, fmtPct);
   addSlider(kDcoSub,     "DCO Sub",     1.f, 0.f, 1.f, fmtPct);
   addSlider(kDcoNoise,   "DCO Noise",   0.f, 0.f, 1.f, fmtPct);
@@ -127,7 +127,12 @@ KR106AudioProcessor::KR106AudioProcessor()
   addSlider(kVcfFreq,    "VCF Freq",    0.5f, 0.f, 1.f, fmtVcfHz);
   addSlider(kVcfRes,     "VCF Res",     0.f,  0.f, 1.f, fmtPct);
   addSlider(kVcfEnv,     "VCF Env",     0.f,  0.f, 1.f, fmtPct);
-  addSlider(kVcfLfo,     "VCF LFO",     0.f,  0.f, 1.f, fmtPct);
+  addSlider(kVcfLfo,     "VCF LFO",     0.f,  0.f, 1.f, [this](float v, int) {
+    float st = (mDSP.mAdsrMode == 0) ? kr106::Voice<float>::vcfLfoDepth6(v)
+                                      : kr106::Voice<float>::vcfLfoDepth106(v);
+    if (st < 0.5f) return juce::String("Off");
+    return juce::String(st, 1) + " st";
+  });
   addSlider(kVcfKbd,     "VCF Kbd",     0.f,  0.f, 1.f, fmtPct);
 
   // VCA

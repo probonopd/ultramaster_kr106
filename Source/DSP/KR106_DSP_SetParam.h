@@ -23,9 +23,14 @@ void KR106DSP<T>::SetParam(int paramIdx, double value)
 
   switch (paramIdx)
   {
-    case kDcoLfo:
-      ForEachVoice([value](kr106::Voice<T>& v) { v.mDcoLfo = static_cast<float>(value); });
+    case kDcoLfo: {
+      mSliderDcoLfo = static_cast<float>(value);
+      float depth = (mAdsrMode == 0)
+        ? kr106::Voice<T>::dcoLfoDepth6(mSliderDcoLfo)
+        : kr106::Voice<T>::dcoLfoDepth106(mSliderDcoLfo);
+      ForEachVoice([depth](kr106::Voice<T>& v) { v.mDcoLfo = depth; });
       break;
+    }
     case kDcoPwm:
       ForEachVoice([value](kr106::Voice<T>& v) { v.mDcoPwm = static_cast<float>(value); });
       break;
@@ -47,9 +52,14 @@ void KR106DSP<T>::SetParam(int paramIdx, double value)
     case kVcfEnv:
       ForEachVoice([value](kr106::Voice<T>& v) { v.mVcfEnv = static_cast<float>(value); });
       break;
-    case kVcfLfo:
-      ForEachVoice([value](kr106::Voice<T>& v) { v.mVcfLfo = static_cast<float>(value); });
+    case kVcfLfo: {
+      mSliderVcfLfo = static_cast<float>(value);
+      float depth = (mAdsrMode == 0)
+        ? kr106::Voice<T>::vcfLfoDepth6(mSliderVcfLfo)
+        : kr106::Voice<T>::vcfLfoDepth106(mSliderVcfLfo);
+      ForEachVoice([depth](kr106::Voice<T>& v) { v.mVcfLfo = depth; });
       break;
+    }
     case kVcfKbd:
       ForEachVoice([value](kr106::Voice<T>& v) { v.mVcfKbd = static_cast<float>(value); });
       break;
@@ -144,20 +154,23 @@ void KR106DSP<T>::SetParam(int paramIdx, double value)
       mAdsrMode = static_cast<int>(value);
       bool j6 = (mAdsrMode == 0);
       ForEachVoice([j6](kr106::Voice<T>& v) { v.mADSR.mJ6Mode = j6; });
+      mLFO.mJ6Mode = j6;
       SetParam(kEnvA, mSliderA);
       SetParam(kEnvD, mSliderD);
       SetParam(kEnvR, mSliderR);
+      SetParam(kLfoRate, mSliderLfoRate);
+      SetParam(kDcoLfo, mSliderDcoLfo);
+      SetParam(kVcfLfo, mSliderVcfLfo);
       break;
     }
     case kBender:
       ForEachVoice([value](kr106::Voice<T>& v) { v.mRawBend = static_cast<float>(value); });
       break;
 
-    case kLfoRate: {
-      float bpm = 18.f + static_cast<float>(value) * 1182.f;
-      mLFO.SetRate(bpm, mSampleRate);
+    case kLfoRate:
+      mSliderLfoRate = static_cast<float>(value);
+      mLFO.SetRate(mSliderLfoRate, mSampleRate);
       break;
-    }
     case kLfoDelay:
       mLFO.SetDelay(static_cast<float>(value));
       break;
@@ -239,7 +252,10 @@ void KR106DSP<T>::SetParam(int paramIdx, double value)
       break;
     }
 
-    case kArpRate: mArp.mRate = static_cast<float>(value); break;
+    case kArpRate:
+      mSliderArpRate = static_cast<float>(value);
+      mArp.mRate = kr106::Arpeggiator::arpRate(mSliderArpRate);
+      break;
     case kArpMode: mArp.mMode = static_cast<int>(value); mArp.mStepIndex = 0; mArp.mDirection = 1; break;
     case kArpRange: mArp.mRange = static_cast<int>(value); break;
     case kArpeggio: {

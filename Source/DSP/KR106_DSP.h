@@ -396,6 +396,10 @@ public:
   float mSliderA = 0.25f;
   float mSliderD = 0.25f;
   float mSliderR = 0.25f;
+  float mSliderLfoRate = 0.24f;
+  float mSliderArpRate = 0.06f;
+  float mSliderDcoLfo = 0.f;
+  float mSliderVcfLfo = 0.f;
 
   std::bitset<128> mHeldNotes;
   std::bitset<128> mKeysDown;
