@@ -34,7 +34,7 @@ jobs:
       - name: Sign plugins
         run: |
           ARTS=build/KR106_artefacts
-          if [ -d "$ARTS/Release" ]; then ARTS="$ARTS/Release"; fi
+          if [ -d "$ARTS/Release/VST3" ]; then ARTS="$ARTS/Release"; fi
           IDENTITY="Developer ID Application"
           codesign --force --deep --options runtime --sign "$IDENTITY" "$ARTS/AU/KR106.component"
           codesign --force --deep --options runtime --sign "$IDENTITY" "$ARTS/VST3/KR106.vst3"
@@ -47,7 +47,7 @@ jobs:
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
           ARTS=build/KR106_artefacts
-          if [ -d "$ARTS/Release" ]; then ARTS="$ARTS/Release"; fi
+          if [ -d "$ARTS/Release/VST3" ]; then ARTS="$ARTS/Release"; fi
           # Create a zip for notarization submission
           ditto -c -k --keepParent "$ARTS/AU/KR106.component" notarize-au.zip
           ditto -c -k --keepParent "$ARTS/VST3/KR106.vst3" notarize-vst3.zip
@@ -65,7 +65,7 @@ jobs:
         run: |
           mkdir -p pkg
           ARTS=build/KR106_artefacts
-          if [ -d "$ARTS/Release" ]; then ARTS="$ARTS/Release"; fi
+          if [ -d "$ARTS/Release/VST3" ]; then ARTS="$ARTS/Release"; fi
           cp -R "$ARTS/AU/KR106.component" pkg/
           cp -R "$ARTS/VST3/KR106.vst3" pkg/
           cp -R "$ARTS/Standalone/KR106.app" pkg/
@@ -108,7 +108,7 @@ jobs:
         run: |
           mkdir -p pkg
           ARTS=build/KR106_artefacts
-          if [ -d "$ARTS/Release" ]; then ARTS="$ARTS/Release"; fi
+          if [ -d "$ARTS/Release/VST3" ]; then ARTS="$ARTS/Release"; fi
           cp -R "$ARTS/VST3/KR106.vst3" pkg/
           cp -R "$ARTS/Standalone/KR106.exe" pkg/
           cat > pkg/INSTALL.txt << 'EOF'
@@ -153,8 +153,7 @@ jobs:
         run: |
           mkdir -p pkg
           ARTS=build/KR106_artefacts
-          # Single-config generators (Makefiles) omit the Release/ subdirectory
-          if [ -d "$ARTS/Release" ]; then ARTS="$ARTS/Release"; fi
+          if [ -d "$ARTS/Release/VST3" ]; then ARTS="$ARTS/Release"; fi
           cp -R "$ARTS/VST3/KR106.vst3" pkg/
           cp -R "$ARTS/LV2/KR106.lv2" pkg/
           cp -R "$ARTS/Standalone/KR106" pkg/
