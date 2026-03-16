@@ -341,6 +341,7 @@ struct Chorus
     // so chorus engages without clicks.
     if (mFade <= 0.f)
     {
+      if (mLine0.mBuf.empty()) { outL = outR = input; return; }
       mLine0.mBuf[mLine0.mWPos & mLine0.mMask] = input;
       mLine0.mWPos = (mLine0.mWPos + 1) & mLine0.mMask;
       mLine1.mBuf[mLine1.mWPos & mLine1.mMask] = input;

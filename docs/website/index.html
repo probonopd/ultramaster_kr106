@@ -57,7 +57,8 @@
     margin-bottom: 0.4rem;
   }
 
-  h1 span { color: #2233cc; }
+  h1 .red { color: #cc0000; }
+  h1 .blue { color: #2233cc; }
 
   .tagline {
     font-size: 1.05rem;
@@ -244,7 +245,7 @@
 <div class="accent-bar"></div>
 <main>
   <header>
-    <h1>ULTRAMASTER <span>KR-106</span></h1>
+    <h1><span class="red">ULTRAMASTER</span> <span class="blue">KR-106</span></h1>
   </header>
 
   <img class="screenshot" src="screenshot.png" alt="Ultramaster KR-106 synthesizer interface">
@@ -261,21 +262,42 @@
     <span>LV2</span>
     <span>Standalone</span>
   </div>
-  <p class="release-info">Latest release: v2.1.0 — March 15, 2026</p>
+  <p class="release-info" id="release-info">Latest release: loading…</p>
+  <script>
+    fetch('https://api.github.com/repos/kayrockscreenprinting/ultramaster_kr106/releases/latest')
+      .then(r => r.json())
+      .then(d => {
+        const date = new Date(d.published_at).toLocaleDateString('en-US', {year:'numeric', month:'long', day:'numeric'});
+        document.getElementById('release-info').textContent = 'Latest release: ' + d.tag_name + ' — ' + date;
+      })
+      .catch(() => {
+        document.getElementById('release-info').textContent = 'Latest release: see GitHub';
+      });
+  </script>
 
-  <div class="downloads">
-    <a class="dl-btn primary" href="https://github.com/kayrockscreenprinting/ultramaster_kr106/releases/latest/download/KR106-macOS.zip">
+  <div class="downloads" id="downloads">
+    <a class="dl-btn" data-os="mac" href="https://github.com/kayrockscreenprinting/ultramaster_kr106/releases/latest/download/KR106-macOS.zip">
       <svg viewBox="0 0 24 24"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.34-3.14-2.58C4.22 16.92 3 13.11 4.84 10.52c.89-1.28 2.48-2.09 4.06-2.12 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83l-.07.28zM13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
       macOS
     </a>
-    <a class="dl-btn" href="https://github.com/kayrockscreenprinting/ultramaster_kr106/releases/latest/download/KR106-Windows.zip">
+    <a class="dl-btn" data-os="win" href="https://github.com/kayrockscreenprinting/ultramaster_kr106/releases/latest/download/KR106-Windows.zip">
       <svg viewBox="0 0 24 24"><path d="M3 12V6.75l8-1.25V12H3zm0 .5h8v6.5l-8-1.25V12.5zM11.5 5.4l9.5-1.4v8h-9.5V5.4zm0 7.1h9.5v8l-9.5-1.4v-6.6z"/></svg>
       Windows
     </a>
-    <a class="dl-btn" href="https://github.com/kayrockscreenprinting/ultramaster_kr106/releases/latest/download/KR106-Linux.zip">
+    <a class="dl-btn" data-os="linux" href="https://github.com/kayrockscreenprinting/ultramaster_kr106/releases/latest/download/KR106-Linux.zip">
       <svg viewBox="0 0 24 24"><path d="M12.5 2c-1.77 0-3.15 1.08-3.76 2.55-.85.3-1.56.85-2.06 1.57C5.84 7.4 5.54 9 5.94 10.5c-.79.73-1.3 1.76-1.3 2.91 0 1.34.67 2.52 1.69 3.23-.04.26-.06.53-.06.81 0 3.04 2.47 5.55 5.55 5.55h.36c3.04 0 5.55-2.47 5.55-5.55 0-.25-.02-.5-.06-.74 1.06-.71 1.76-1.91 1.76-3.28 0-1.14-.5-2.16-1.28-2.88.41-1.51.1-3.13-.75-4.42-.5-.73-1.22-1.29-2.08-1.59C14.65 3.08 13.27 2 12.5 2z"/></svg>
       Linux
     </a>
+  <script>
+    (function() {
+      var p = navigator.platform || '', u = navigator.userAgent || '';
+      var os = /Mac/.test(p) ? 'mac' : /Win/.test(p) ? 'win' : /Linux/.test(u) ? 'linux' : '';
+      if (os) {
+        var btn = document.querySelector('.dl-btn[data-os="' + os + '"]');
+        if (btn) btn.classList.add('primary');
+      }
+    })();
+  </script>
     <a class="dl-btn" href="https://github.com/kayrockscreenprinting/ultramaster_kr106">
       <svg viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
       Source Code (GPL)
@@ -297,7 +319,7 @@
     </div>
     <div class="feature">
       <h3>205 Factory Presets</h3>
-      <p>All original patches decoded from factory SYSEX data</p>
+      <p>All original patches decoded from factory SYSEX data, no hand tweaking, so if soething doesn't sound right, we will fix the model, not the patch.</p>
     </div>
   </div>
 
