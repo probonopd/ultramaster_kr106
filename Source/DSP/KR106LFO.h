@@ -48,21 +48,42 @@ struct LFO
     return ( ( 18.f + t * 1182.f ) / 60.f );
   }
 
-  // Maps normalized slider 0..1 to LFO frequency in Hz
-  // Derived from curve analysis of Roland Juno-106 voice firmware timing.
-  // Frame rate 238.1 Hz (1/4.2ms), LFO accumulator full cycle = 16384 steps.
+  // Maps normalized slider 0..1 to LFO frequency in Hz.
+  //
+  // The LFO is a triangle accumulator in the D7811G main loop ($074E):
+  //   - 16-bit value in $FF4D, range $0000–$1FFF
+  //   - Rate coefficient from 0C60_lfoSpeedTbl in $FF4B
+  //   - Rising: DADD EA,BC, clamp at $1FFF, flip direction
+  //   - Falling: DSUBNB EA,BC, clamp at $0000, flip direction
+  //   - Full triangle cycle = 2 × $2000 = 16384 accumulator steps
+  //
+  // Two-cycle: the LFO alternates rising/falling on successive loop
+  // iterations (like the sub oscillator), so it updates at half the
+  // main loop rate. The 4.2ms loop runs at 238.1 Hz; the LFO's
+  // effective tick rate is ~119 Hz. Measured LFO at MIDI 66:
+  // 4.84 Hz (table coeff 698 → effective rate ≈ 113.6 Hz).
+  //
+  // freq = effective_rate × rate_coeff / 16384
+  //
+  // Clean-room piecewise linear approximation of 0C60_lfoSpeedTbl.
+  // Slopes and breakpoints derived from curve analysis of the table
+  // shape: linear 0–63 (slope 10), linear 64–95 (slope 16),
+  // then accelerating 96–127 in four sub-segments.
+  static float lfoSpeedCoeff(float i)
+  {
+    if (i < 8.f)   return 5.f + i * 12.14f;              // slow ramp
+    if (i < 64.f)  return 20.f + i * 10.f;               // linear, step=10
+    if (i < 96.f)  return -358.f + i * 16.f;             // linear, step=16
+    if (i < 104.f) return 1214.f + (i - 96.f) * 52.3f;   // accelerating
+    if (i < 112.f) return 1650.f + (i - 104.f) * 84.3f;
+    if (i < 120.f) return 2340.f + (i - 112.f) * 100.f;
+    return 3160.f + (i - 120.f) * 133.7f;                // fastest
+  }
+
   static float lfoFreqJ106(float t)
   {
-    float i = t * 127.f;
-    float coeff;
-    if (i < 96.f)
-      coeff = 5.f + 12.18f * i; // linear region
-    else
-      coeff = 1214.f * powf(1.039f, i - 96.f); // exponential region
-
-    // freq = coeff * frameRate / cyclePeriod
-    //      = coeff * 238.1 / 16384
-    return coeff / 68.81f;
+    float coeff = lfoSpeedCoeff(t * 127.f);
+    return coeff * kMainLoopRate / 16384.f;
   }
 
   void SetRate(float slider, float sampleRate)
@@ -86,7 +107,11 @@ struct LFO
   //   Linear fade-in until 16-bit overflow, then clamp to full depth.
   //   Ramp table (0B30_LfoDelayRampTbl): 8 entries indexed by pot >> 4.
 
-  static constexpr float kTickRate = 238.1f; // D7811G main loop rate (1/4.2ms)
+  // LFO effective tick rate: the main loop runs at 238.1 Hz (4.2 ms), but
+  // the LFO is two-cycle (alternates rising/falling each iteration), so
+  // it updates at half the loop rate. Measured: MIDI 66 → table coeff 698
+  // → 4.84 Hz → 4.84 × 16384 / 698 = 113.6 Hz effective.
+  static constexpr float kMainLoopRate = 113.6f;
 
   // Clean-room LFO delay ramp table (0B30_LfoDelayRampTbl).
   // 8 entries, indexed by (pot >> 4). Larger value = faster ramp.
@@ -109,7 +134,7 @@ struct LFO
     if (inc >= ADSR::kEnvMax) return 0.f; // instant
     // ticks to reach 0x4000: accumulator >= 0x4000 after ceil(0x4000/inc) ticks
     float ticks = static_cast<float>(ADSR::kEnvMax) / static_cast<float>(inc);
-    return ticks / kTickRate;
+    return ticks / kMainLoopRate;
   }
 
   // Compute ramp rate (depth per second) for J106 LFO delay.
@@ -122,7 +147,7 @@ struct LFO
     int idx = std::clamp(pot >> 4, 0, 7);
     uint16_t rampInc = kLfoRampTable[idx];
     if (rampInc == 0xFFFF) return 1e6f; // instant
-    return (static_cast<float>(rampInc) / 65536.f) * kTickRate;
+    return (static_cast<float>(rampInc) / 65536.f) * kMainLoopRate;
   }
 
   void SetDelay(float slider)

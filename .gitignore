@@ -39,6 +39,7 @@ ipch/
 
 # Audio samples
 *.wav
+*.mp3
 
 # ROM analysis (copyrighted data)
 resources/106rom/
