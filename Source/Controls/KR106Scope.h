@@ -39,9 +39,9 @@ public:
         if (mProcessor && mProcessor->getParam(kPower)->getValue() <= 0.5f)
             return;
 
-        if (mScaleIdx < 3)
+        if (mScaleIdx == 0)
             paintWaveform(g, w, h, black, dim, mid, bright);
-        else if (mScaleIdx == 3)
+        else if (mScaleIdx == 1)
             paintADSR(g, w, h, dim, mid, bright);
         else
             paintVCF(g, w, h, dim, mid, bright);
@@ -49,7 +49,7 @@ public:
 
     void mouseDown(const juce::MouseEvent&) override
     {
-        mScaleIdx = (mScaleIdx + 1) % 5; // 0-2: waveform scales, 3: ADSR, 4: VCF
+        mScaleIdx = (mScaleIdx + 1) % 3; // 0: waveform, 1: ADSR, 2: VCF
         repaint();
     }
 
@@ -67,7 +67,7 @@ public:
         if (newSamples == 0)
         {
             // ADSR/VCF modes depend on slider params, not audio — only repaint on change
-            if (mScaleIdx >= 3) repaintIfParamsChanged();
+            if (mScaleIdx >= 1) repaintIfParamsChanged();
             return;
         }
 
@@ -141,7 +141,7 @@ private:
                        juce::Colour /*black*/, juce::Colour dim, juce::Colour mid, juce::Colour bright)
     {
         int v2 = h / 2;
-        float scale = kScales[mScaleIdx];
+        float scale = 1.f;
 
         // Vertical: 3 interior lines (skip edges)
         g.setColour(dim);
@@ -451,8 +451,8 @@ private:
             fc *= kr106::VCF::FreqCompensation(k);
 
         // Display range
-        static constexpr float kMinHz = 20.f;
-        static constexpr float kMaxHz = 20000.f;
+        static constexpr float kMinHz = 5.f;
+        static constexpr float kMaxHz = 50000.f;
         static constexpr float kMinDb = -48.f;
         static constexpr float kMaxDb = 24.f;
         static constexpr float kDbRange = kMaxDb - kMinDb; // 72 dB
@@ -462,7 +462,7 @@ private:
 
         // Grid: vertical lines at decade frequencies
         g.setColour(dim);
-        for (float freq : { 100.f, 1000.f, 10000.f })
+        for (float freq : { 10.f, 100.f, 1000.f, 10000.f })
         {
             float xf = (log10f(freq) - logMin) / logRange * (w - 1);
             g.fillRect(xf, 0.f, 1.f, static_cast<float>(h));
@@ -514,8 +514,7 @@ private:
         }
     }
 
-    static constexpr float kScales[3] = { 0.5f, 1.f, 1.5f };
-    int mScaleIdx = 1; // default 1.0
+    int mScaleIdx = 0; // 0: waveform, 1: ADSR, 2: VCF
 
     KR106AudioProcessor* mProcessor = nullptr;
 
@@ -545,7 +544,7 @@ private:
         auto fbits = [](float f) { uint32_t u; std::memcpy(&u, &f, 4); return u; };
 
         uint64_t h = 0;
-        if (mScaleIdx == 3) // ADSR
+        if (mScaleIdx == 1) // ADSR
         {
             h = fbits(dsp.mSliderA) ^ (static_cast<uint64_t>(fbits(dsp.mSliderD)) << 16)
               ^ (static_cast<uint64_t>(fbits(dsp.mSliderR)) << 32)

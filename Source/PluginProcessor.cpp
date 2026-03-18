@@ -194,7 +194,7 @@ KR106AudioProcessor::KR106AudioProcessor()
   addSlider(kBenderVcf,  "Bender VCF",  0.f, 0.f, 1.f, fmtPct, parsePct);
   addSlider(kBenderLfo,  "Bender LFO",  0.f, 0.f, 1.f, fmtPct, parsePct);
 
-  addSlider(kArpRate, "Arp Rate", 0.06f, 0.f, 1.f, [](float v, int) {
+  addSlider(kArpRate, "Arp Rate", 30.f/128.f, 0.f, 1.f, [](float v, int) {
     return juce::String(juce::roundToInt(kr106::Arpeggiator::arpRate(v))) + " bpm";
   }, [bsearch](const juce::String& text) -> float {
     return bsearch([](float v) { return kr106::Arpeggiator::arpRate(v); },
@@ -220,7 +220,7 @@ KR106AudioProcessor::KR106AudioProcessor()
     }, text.getFloatValue());
   };
   addSlider(kDcoLfo,     "DCO LFO",     0.f, 0.f, 1.f, fmtDcoLfo, parseDcoLfo);
-  addSlider(kDcoPwm,     "DCO PWM",     0.f, 0.f, 1.f, fmtPct, parsePct);
+  addSlider(kDcoPwm,     "DCO PWM",     0.5f, 0.f, 1.f, fmtPct, parsePct);
   addSlider(kDcoSub,     "DCO Sub",     1.f, 0.f, 1.f, fmtPct, parsePct);
   addSlider(kDcoNoise,   "DCO Noise",   0.f, 0.f, 1.f, fmtPct, parsePct);
 
@@ -264,9 +264,9 @@ KR106AudioProcessor::KR106AudioProcessor()
   addBool(kTranspose,    "Transpose",   false);
   addBool(kHold,         "Hold",        false);
   addBool(kArpeggio,     "Arpeggio",    false);
-  addBool(kDcoPulse,     "Pulse",       false);
+  addBool(kDcoPulse,     "Pulse",       true);
   addBool(kDcoSaw,       "Saw",         true);
-  addBool(kDcoSubSw,     "Sub Sw",      false);
+  addBool(kDcoSubSw,     "Sub Sw",      true);
   addBool(kChorusOff,    "Chorus Off",  false);
   addBool(kChorusI,      "Chorus I",    true);
   addBool(kChorusII,     "Chorus II",   false);
@@ -301,7 +301,7 @@ KR106AudioProcessor::KR106AudioProcessor()
     double dB = text.getDoubleValue();
     return juce::jlimit(0.f, 1.f, static_cast<float>(std::pow(10.0, dB / 20.0)));
   };
-  addSlider(kMasterVol, "Master Volume", 0.2f, 0.f, 1.f, fmtMasterVol, parseMasterVol);
+  addSlider(kMasterVol, "Master Volume", 0.5f, 0.f, 1.f, fmtMasterVol, parseMasterVol);
 }
 
 void KR106AudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
@@ -439,21 +439,7 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                          nOutputs > 1 ? buffer.getWritePointer(1) : buffer.getWritePointer(0) };
   mDSP.ProcessBlock(nullptr, outputs, nOutputs, nFrames);
 
-  // --- Write scope ring buffer (before saturation, so display stays tall) ---
-  {
-    float* syncBuf = mDSP.GetSyncBuffer();
-    int wp = mScopeWritePos.load(std::memory_order_relaxed);
-    for (int i = 0; i < nFrames; i++)
-    {
-      mScopeRing[wp] = outputs[0][i];
-      mScopeRingR[wp] = nOutputs > 1 ? outputs[1][i] : outputs[0][i];
-      mScopeSyncRing[wp] = syncBuf[i];
-      wp = (wp + 1) % kScopeRingSize;
-    }
-    mScopeWritePos.store(wp, std::memory_order_release);
-  }
-
-  // --- Master volume (after scope, before output) ---
+  // --- Master volume ---
   float masterVol = getParamValue(kMasterVol);
   for (int i = 0; i < nFrames; i++)
   {
@@ -474,10 +460,24 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     float* ch = buffer.getWritePointer(c);
     for (int i = 0; i < nFrames; i++)
     {
-      float x = ch[i] * 0.35f;
+      float x = ch[i] * 0.65f;
       float x2 = x * x;
       ch[i] = x * (27.f + x2) / (27.f + 9.f * x2);
     }
+  }
+
+  // --- Write scope ring buffer (after volume and saturation) ---
+  {
+    float* syncBuf = mDSP.GetSyncBuffer();
+    int wp = mScopeWritePos.load(std::memory_order_relaxed);
+    for (int i = 0; i < nFrames; i++)
+    {
+      mScopeRing[wp] = outputs[0][i];
+      mScopeRingR[wp] = nOutputs > 1 ? outputs[1][i] : outputs[0][i];
+      mScopeSyncRing[wp] = syncBuf[i];
+      wp = (wp + 1) % kScopeRingSize;
+    }
+    mScopeWritePos.store(wp, std::memory_order_release);
   }
 }
 
