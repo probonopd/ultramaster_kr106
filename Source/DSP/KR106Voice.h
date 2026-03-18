@@ -69,13 +69,20 @@ public:
 
   float mSampleRate = 44100.f;
 
-  // --- J106 integer VCF state ---
+  // --- Unified D7811G firmware tick state (J106 mode) ---
+  // The real D7811G runs one main loop at ~238 Hz that computes ADSR and
+  // VCF DAC for each voice in sequence. A single tick accumulator keeps
+  // them perfectly synchronized — the VCF always reads the just-updated
+  // envelope value from the same loop iteration.
   int mMidiNote           = 60;    // MIDI note number (for firmware 8.8 pitch)
   float mLfoEnvAmp        = 0.f;   // LFO onset envelope (set by DSP per block)
-  float mVcfTickAccum     = 0.f;   // tick accumulator (238.1 Hz, same as ADSR)
-  float mVcfTickStep      = 0.f;   // ticks per sample
-  uint16_t mVcfDacPrev    = 0;     // previous tick's DAC output
+  float mFwTickAccum      = 0.f;   // unified tick accumulator [0, 1)
+  float mFwTickStep       = 0.f;   // ticks per sample (kTickRate / sampleRate)
+  float mFwEnvNext        = 0.f;   // envelope at current tick
+  float mFwEnvSmooth      = 0.f;   // RC-smoothed envelope output
   uint16_t mVcfDacNext    = 0;     // current tick's DAC output
+  float mVcfDacSmooth     = 0.f;   // RC-smoothed DAC value (before expo conversion)
+  float mDacSmoothCoeff   = 0.f;   // one-pole coefficient for DAC/env smoothing
 
   // J106 integer parameter cache (set by SetParam, avoids per-sample conversion)
   uint16_t mVcfCutoffInt  = 0;     // 14-bit slider value (0x0000–0x3F80)
@@ -291,6 +298,42 @@ public:
   float mInvNyq = 1.f / 22050.f;
   float mMinCPS = 20.f / 22050.f;
 
+  // Run one D7811G main loop iteration for this voice.
+  // Computes ADSR and VCF DAC in sequence, matching the real firmware where
+  // both are updated in the same 4.2ms loop pass. The VCF always reads the
+  // just-updated mEnvInt — no tick drift possible.
+  void FirmwareTick(float lfoRaw)
+  {
+    // 1. ADSR tick — updates mEnvInt, may transition state
+    mADSR.Tick106();
+    mFwEnvNext = static_cast<float>(mADSR.mEnvInt) / ADSR::kEnvMax;
+
+    // 2. VCF DAC — reads the just-updated mEnvInt
+    // Convert LFO to firmware format: magnitude + polarity
+    uint16_t lfoVal = static_cast<uint16_t>(fabsf(lfoRaw) * 0x1FFF);
+    bool lfoPolarity = (lfoRaw < 0.f);
+    uint8_t depthScalar = static_cast<uint8_t>(mLfoEnvAmp * 255.f);
+    uint16_t vcfLfoSignal = kr106::calc_vcf_lfo_signal(
+        mVcfLfoDepthInt, depthScalar, lfoVal);
+
+    // Convert bend to firmware format: magnitude + polarity
+    uint8_t bendVal = static_cast<uint8_t>(fabsf(mRawBend) * 255.f);
+    bool bendPol = (mRawBend < 0.f);
+    uint16_t vcfBendAmt = kr106::calc_vcf_bend_amt(mVcfBendSensInt, bendVal);
+
+    // Pitch: 8.8 fixed-point semitones (MIDI note + octave transpose)
+    int noteWithTranspose = mMidiNote + static_cast<int>(mOctTranspose);
+    uint16_t pitch88 = static_cast<uint16_t>(
+        std::clamp(noteWithTranspose, 0, 127) << 8);
+
+    bool envPol = (mVcfEnvInvert > 0);
+    mVcfDacNext = kr106::calc_vcf_freq(
+        mVcfCutoffInt, vcfLfoSignal, vcfBendAmt,
+        mVcfEnvModInt, mVcfKeyTrackInt,
+        lfoPolarity, bendPol, envPol,
+        mADSR.mEnvInt, pitch88);
+  }
+
   bool GetBusy() const { return mADSR.GetBusy(); }
 
   void SetUnisonPitch(double pitch) { mPitch = pitch; }
@@ -305,6 +348,29 @@ public:
       mGlidePitch = newPitch;
 
     mADSR.NoteOn();
+
+    // In J106 mode, NoteOn calls Tick106() internally for the immediate
+    // first attack step. Snap the RC smoothers to the post-attack value
+    // so the envelope and VCF start immediately at the right level.
+    if (!mADSR.mJ6Mode)
+    {
+      mFwEnvNext = mADSR.mEnvNext;
+      mFwEnvSmooth = mADSR.mEnvNext; // snap — no ramp from zero
+
+      // Compute initial VCF DAC with the post-attack envelope so the
+      // filter cutoff starts at the correct frequency on the first sample.
+      int noteWithTranspose = mMidiNote + static_cast<int>(mOctTranspose);
+      uint16_t pitch88 = static_cast<uint16_t>(
+          std::clamp(noteWithTranspose, 0, 127) << 8);
+      bool envPol = (mVcfEnvInvert > 0);
+      mVcfDacNext = kr106::calc_vcf_freq(
+          mVcfCutoffInt, 0, 0,
+          mVcfEnvModInt, mVcfKeyTrackInt,
+          false, false, envPol,
+          mADSR.mEnvInt, pitch88);
+      mVcfDacSmooth = static_cast<float>(mVcfDacNext);
+    }
+
     if (!isRetrigger)
     {
       mOsc.Reset();
@@ -338,8 +404,13 @@ public:
     mInvNyq   = 1.f / nyq;      // Hz → normalized cutoff
     mMinCPS   = 20.f * mInvNyq; // 20 Hz floor in normalized units
 
-    // J106 integer VCF runs at firmware tick rate (238.1 Hz)
-    mVcfTickStep = ADSR::kTickRate / mSampleRate;
+    // Unified D7811G firmware tick rate (238.1 Hz) — drives ADSR + VCF
+    mFwTickStep = ADSR::kTickRate / mSampleRate;
+
+    // DAC output smoothing: 1ms RC time constant models the analog
+    // output stage between the D7811G DAC and the IR3109 expo converter.
+    static constexpr float kDacSmoothTau = 0.00025f; // 0.25ms (99% converged by ~1.25ms)
+    mDacSmoothCoeff = 1.f - expf(-1.f / (kDacSmoothTau * mSampleRate));
 
     UpdatePortaCoeff();
   }
@@ -378,7 +449,28 @@ public:
       }
 
       float lfo = lfoBuffer ? static_cast<float>(lfoBuffer[i]) : 0.f;
-      float env = mADSR.Process();
+      float env;
+
+      if (mADSR.mJ6Mode)
+      {
+        env = mADSR.Process();
+      }
+      else
+      {
+        // J106: unified D7811G firmware tick drives ADSR + VCF DAC together.
+        float rawLfo = lfoRawBuffer ? static_cast<float>(lfoRawBuffer[i]) : 0.f;
+        mFwTickAccum += mFwTickStep;
+        while (mFwTickAccum >= 1.f)
+        {
+          mFwTickAccum -= 1.f;
+          FirmwareTick(rawLfo);
+        }
+        // RC smooth the stairstepped envelope (1ms tau, models analog output stage)
+        mFwEnvSmooth += (mFwEnvNext - mFwEnvSmooth) * mDacSmoothCoeff;
+        env = mFwEnvSmooth;
+        mADSR.mEnv = env;
+        mADSR.UpdateGateEnv();
+      }
 
       // --- Pulse width modulation ---
       float pw;
@@ -469,49 +561,12 @@ public:
       }
       else
       {
-        // J106: Firmware-accurate integer VCF calculation (D7811G $04D5–$064E).
-        // Runs at tick rate (238.1 Hz) with interpolation, matching the real
-        // hardware's DAC update rate.
-        mVcfTickAccum += mVcfTickStep;
-        while (mVcfTickAccum >= 1.f)
-        {
-          mVcfTickAccum -= 1.f;
-          mVcfDacPrev = mVcfDacNext;
-
-          // Convert LFO to firmware format: magnitude + polarity
-          float rawLfo = lfoRawBuffer ? static_cast<float>(lfoRawBuffer[i]) : 0.f;
-          uint16_t lfoVal = static_cast<uint16_t>(fabsf(rawLfo) * 0x1FFF);
-          bool lfoPolarity = (rawLfo < 0.f);
-          uint8_t depthScalar = static_cast<uint8_t>(mLfoEnvAmp * 255.f);
-          uint16_t vcfLfoSignal = kr106::calc_vcf_lfo_signal(
-              mVcfLfoDepthInt, depthScalar, lfoVal);
-
-          // Convert bend to firmware format: magnitude + polarity
-          uint8_t bendVal = static_cast<uint8_t>(fabsf(mRawBend) * 255.f);
-          bool bendPol = (mRawBend < 0.f);
-          uint16_t vcfBendAmt = kr106::calc_vcf_bend_amt(mVcfBendSensInt, bendVal);
-
-          // Envelope: use ADSR's 14-bit integer value directly
-          uint16_t envInt = mADSR.mEnvInt;
-
-          // Pitch: 8.8 fixed-point semitones (MIDI note + octave transpose)
-          int noteWithTranspose = mMidiNote + static_cast<int>(mOctTranspose);
-          uint16_t pitch88 = static_cast<uint16_t>(
-              std::clamp(noteWithTranspose, 0, 127) << 8);
-
-          bool envPol = (mVcfEnvInvert > 0);
-          mVcfDacNext = kr106::calc_vcf_freq(
-              mVcfCutoffInt, vcfLfoSignal, vcfBendAmt,
-              mVcfEnvModInt, mVcfKeyTrackInt,
-              lfoPolarity, bendPol, envPol,
-              envInt, pitch88);
-        }
-
-        // Interpolate between ticks, convert DAC → Hz → normalized cutoff
-        float dacF = static_cast<float>(mVcfDacPrev)
-                   + (static_cast<float>(mVcfDacNext) - static_cast<float>(mVcfDacPrev))
-                   * mVcfTickAccum;
-        float vcfHz = kr106::dacToHz(static_cast<uint16_t>(dacF));
+        // J106: DAC already computed by unified firmware tick above.
+        // RC smooth the stairstepped DAC value, then convert through
+        // the exponential converter — matches the real hardware signal
+        // path: DAC → analog RC → IR3109 expo converter.
+        mVcfDacSmooth += (static_cast<float>(mVcfDacNext) - mVcfDacSmooth) * mDacSmoothCoeff;
+        float vcfHz = kr106::dacToHz(static_cast<uint16_t>(mVcfDacSmooth));
         vcfCPS = vcfHz * mInvNyq;
       }
 

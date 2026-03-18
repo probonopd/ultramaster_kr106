@@ -301,9 +301,28 @@ struct ADSR
     return mEnv;
   }
 
-private:
+  // Per-sample gate envelope update, called externally in J106 unified tick mode.
+  // Separated from Process() so Voice can drive the tick accumulator while
+  // still updating the gate ramp every sample.
+  void UpdateGateEnv()
+  {
+    switch (mState)
+    {
+      case kAttack:
+      case kDecay:
+        mGateEnv += kGateSlope;
+        break;
+      case kRelease:
+      case kFinished:
+        mGateEnv -= kGateSlope;
+        break;
+    }
+    mGateEnv = std::clamp(mGateEnv, 0.f, 1.f);
+  }
+
   // Run one D7811G envelope tick (called at ~238 Hz, matching the 4.2ms DAC period).
   // This replicates the envelope update loop from the IC29 ROM ($0500–$059A).
+  // Public so Voice can call it from the unified firmware tick.
   void Tick106()
   {
     switch (mState)

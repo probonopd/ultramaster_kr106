@@ -98,6 +98,9 @@ struct Oscillators {
   // At 44.1 kHz the ring is unresolvable (2.2 samples/cycle), so we model
   // it as an energy-equivalent PolyBLEP impulse. 0.15 splits the difference
   // between spike-only and total ring energy.
+  // FIXME 192 kHz measurement actually shows — a predominantly exponential decay
+  // (~100µs time constant) rather than a 20 kHz ring with Q ≈ 10.
+  // The 384 kHz ring data was likely a resampler artifact.
   static constexpr float kBlipAmp = 0.15f;
   static constexpr float kBlipDecay = 0.5f;
 
