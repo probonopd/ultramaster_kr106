@@ -17,11 +17,60 @@ public:
     std::vector<KR106Preset> mPresets;
     mutable std::mutex mMutex;
 
-    static juce::File getDefaultCSVPath()
+    static juce::File getAppDataDir()
     {
         return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-            .getChildFile("KR106")
-            .getChildFile("presets.csv");
+            .getChildFile("KR106");
+    }
+
+    static juce::File getDefaultCSVPath()
+    {
+        return getAppDataDir().getChildFile("patchbank.csv");
+    }
+
+    static juce::File getSettingsFile()
+    {
+        return getAppDataDir().getChildFile("settings.json");
+    }
+
+    // Returns the active CSV path (persisted or default)
+    juce::File getActiveCSVPath() const
+    {
+        return mActiveCSVPath.existsAsFile() ? mActiveCSVPath : getDefaultCSVPath();
+    }
+
+    void setActiveCSVPath(const juce::File& path)
+    {
+        mActiveCSVPath = path;
+        saveSetting("presetFile", path.getFullPathName());
+    }
+
+    // --- Global settings (JSON) ---
+
+    static juce::var loadSettings()
+    {
+        auto file = getSettingsFile();
+        if (!file.existsAsFile()) return juce::var();
+        auto parsed = juce::JSON::parse(file.loadFileAsString());
+        return parsed;
+    }
+
+    static void saveSetting(const juce::String& key, const juce::var& value)
+    {
+        auto settings = loadSettings();
+        if (!settings.isObject())
+            settings = juce::var(new juce::DynamicObject());
+        settings.getDynamicObject()->setProperty(key, value);
+        getAppDataDir().createDirectory();
+        getSettingsFile().replaceWithText(juce::JSON::toString(settings));
+    }
+
+    static juce::var getSetting(const juce::String& key, const juce::var& defaultValue = {})
+    {
+        auto settings = loadSettings();
+        if (settings.isObject() && settings.hasProperty(key))
+            return settings[key];
+        return defaultValue;
     }
 
     // Bank prefix from position: A11..A88, B11..B88
@@ -56,16 +105,41 @@ public:
     void initializeFromDisk(juce::RangedAudioParameter** params, int numParams,
                             const bool* exclude)
     {
-        auto csvFile = getDefaultCSVPath();
-        if (!csvFile.existsAsFile())
+        // Ensure factory CSV exists
+        auto defaultCSV = getDefaultCSVPath();
+        if (!defaultCSV.existsAsFile())
         {
-            csvFile.getParentDirectory().createDirectory();
-            writeFactory(csvFile, params, numParams, exclude);
+            defaultCSV.getParentDirectory().createDirectory();
+            writeFactory(defaultCSV, params, numParams, exclude);
         }
-        else
+
+        // Load persisted path from settings, fall back to default
+        auto savedPath = getSetting("presetFile").toString();
+        if (savedPath.isNotEmpty())
         {
-            loadFromFile(csvFile, params, numParams);
+            juce::File saved(savedPath);
+            if (saved.existsAsFile())
+                mActiveCSVPath = saved;
         }
+
+        // Migrate old settings.txt if present
+        auto oldSettings = getAppDataDir().getChildFile("settings.txt");
+        if (oldSettings.existsAsFile())
+        {
+            if (mActiveCSVPath == juce::File())
+            {
+                juce::File old(oldSettings.loadFileAsString().trim());
+                if (old.existsAsFile())
+                {
+                    mActiveCSVPath = old;
+                    saveSetting("presetFile", old.getFullPathName());
+                }
+            }
+            oldSettings.deleteFile();
+        }
+
+        auto csvFile = getActiveCSVPath();
+        loadFromFile(csvFile, params, numParams);
     }
 
     bool loadFromFile(const juce::File& file, juce::RangedAudioParameter** params, int numParams)
@@ -304,6 +378,8 @@ private:
         }
         return line;
     }
+
+    juce::File mActiveCSVPath;
 
     // writeFactory is now identical to saveToFile — kept as alias for clarity
     bool writeFactory(const juce::File& file, juce::RangedAudioParameter** params,

@@ -76,6 +76,10 @@ public:
   bool isCurrentPresetDirty() const;
   juce::File getPresetCSVPath() const { return KR106PresetManager::getDefaultCSVPath(); }
 
+  // Persist global settings (right-click menu: zoom, voices, etc.)
+  void saveGlobalSettings();
+  void loadGlobalSettings();
+
   // Clip indicator: peak level before saturator (audio writes, UI reads)
   std::atomic<float> mPeakLevel{0.f};
 

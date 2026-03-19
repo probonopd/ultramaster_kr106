@@ -407,6 +407,7 @@ KR106AudioProcessor::KR106AudioProcessor()
     mPresetMgr.mPresets.push_back(std::move(p));
   }
   mPresetMgr.initializeFromDisk(mParams, kNumParams, sExcludeMask);
+  loadGlobalSettings();
 }
 
 void KR106AudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
@@ -894,6 +895,7 @@ void KR106AudioProcessor::setCurrentProgram(int index)
 void KR106AudioProcessor::reloadPresetsFromFile(const juce::File& file)
 {
   mPresetMgr.loadFromFile(file, mParams, kNumParams);
+  mPresetMgr.setActiveCSVPath(file);
   int numPresets = getNumPrograms();
   if (mCurrentPreset >= numPresets)
     mCurrentPreset = 0;
@@ -902,26 +904,26 @@ void KR106AudioProcessor::reloadPresetsFromFile(const juce::File& file)
 void KR106AudioProcessor::saveCurrentPresetToCSV(const juce::String& name)
 {
   mPresetMgr.captureCurrentParams(mCurrentPreset, name, mParams, kNumParams);
-  mPresetMgr.saveOnePreset(mCurrentPreset, mPresetMgr.getDefaultCSVPath(), mParams, kNumParams, sExcludeMask);
+  mPresetMgr.saveOnePreset(mCurrentPreset, mPresetMgr.getActiveCSVPath(), mParams, kNumParams, sExcludeMask);
 }
 
 void KR106AudioProcessor::renameCurrentPreset(const juce::String& name)
 {
   mPresetMgr.renamePreset(mCurrentPreset, name);
-  mPresetMgr.saveOnePreset(mCurrentPreset, mPresetMgr.getDefaultCSVPath(), mParams, kNumParams, sExcludeMask);
+  mPresetMgr.saveOnePreset(mCurrentPreset, mPresetMgr.getActiveCSVPath(), mParams, kNumParams, sExcludeMask);
 }
 
 void KR106AudioProcessor::clearCurrentPreset()
 {
   mPresetMgr.clearPreset(mCurrentPreset, kNumParams);
-  mPresetMgr.saveOnePreset(mCurrentPreset, mPresetMgr.getDefaultCSVPath(), mParams, kNumParams, sExcludeMask);
+  mPresetMgr.saveOnePreset(mCurrentPreset, mPresetMgr.getActiveCSVPath(), mParams, kNumParams, sExcludeMask);
   setCurrentProgram(mCurrentPreset);
 }
 
 void KR106AudioProcessor::pastePreset(const KR106Preset& preset)
 {
   mPresetMgr.setPreset(mCurrentPreset, preset);
-  mPresetMgr.saveOnePreset(mCurrentPreset, mPresetMgr.getDefaultCSVPath(), mParams, kNumParams, sExcludeMask);
+  mPresetMgr.saveOnePreset(mCurrentPreset, mPresetMgr.getActiveCSVPath(), mParams, kNumParams, sExcludeMask);
   setCurrentProgram(mCurrentPreset);
 }
 
@@ -942,6 +944,32 @@ bool KR106AudioProcessor::isCurrentPresetDirty() const
       return true;
   }
   return false;
+}
+
+void KR106AudioProcessor::loadGlobalSettings()
+{
+  auto scale = KR106PresetManager::getSetting("uiScale", 0.f);
+  if ((float)scale > 0.f) mUIScale = (float)scale;
+
+  auto voices = KR106PresetManager::getSetting("voiceCount", 6);
+  mVoiceCount = (int)voices;
+  mDSP.SetActiveVoices(mVoiceCount);
+
+  auto ignVel = KR106PresetManager::getSetting("ignoreVelocity", true);
+  mIgnoreVelocity = (bool)ignVel;
+  mDSP.mIgnoreVelocity = mIgnoreVelocity;
+
+  auto arpLimit = KR106PresetManager::getSetting("arpLimitKbd", true);
+  mArpLimitKbd = (bool)arpLimit;
+  mDSP.mArp.mLimitToKeyboard = mArpLimitKbd;
+}
+
+void KR106AudioProcessor::saveGlobalSettings()
+{
+  KR106PresetManager::saveSetting("uiScale", mUIScale);
+  KR106PresetManager::saveSetting("voiceCount", mVoiceCount);
+  KR106PresetManager::saveSetting("ignoreVelocity", mIgnoreVelocity);
+  KR106PresetManager::saveSetting("arpLimitKbd", mArpLimitKbd);
 }
 
 juce::AudioProcessorEditor* KR106AudioProcessor::createEditor()

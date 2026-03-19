@@ -47,6 +47,8 @@ public:
             return;
         }
         mDragAccum = 0.f;
+        setMouseCursor(juce::MouseCursor::NoCursor);
+        e.source.enableUnboundedMouseMovement(true);
     }
 
     void mouseDrag(const juce::MouseEvent& e) override
@@ -71,9 +73,13 @@ public:
         }
     }
 
-    void mouseUp(const juce::MouseEvent&) override
+    void mouseUp(const juce::MouseEvent& e) override
     {
         mDragRemainder = 0.f;
+        setMouseCursor(juce::MouseCursor::UpDownResizeCursor);
+        e.source.enableUnboundedMouseMovement(false);
+        auto screenPos = localPointToGlobal(juce::Point<int>(getWidth() / 2, getHeight() / 2));
+        juce::Desktop::getInstance().getMainMouseSource().setScreenPosition(screenPos.toFloat());
     }
 
     void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails& wheel) override

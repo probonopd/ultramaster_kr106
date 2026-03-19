@@ -180,6 +180,7 @@ void KR106Editor::mouseDown(const juce::MouseEvent& e)
     menu.addItem(21, "Limit Arp to Keyboard Range", true, mProcessor.mArpLimitKbd);
 
     menu.showMenuAsync({}, [this](int r) {
+        if (r == 0) return;
         // UI scale
         float s = r == 1 ? 1.f : r == 2 ? 1.5f : r == 3 ? 2.f : 0.f;
         if (s > 0.f && s != mUIScale)
@@ -210,6 +211,7 @@ void KR106Editor::mouseDown(const juce::MouseEvent& e)
             mProcessor.mArpLimitKbd = !mProcessor.mArpLimitKbd;
             mProcessor.mDSP.mArp.mLimitToKeyboard = mProcessor.mArpLimitKbd;
         }
+        mProcessor.saveGlobalSettings();
     });
 }
 
