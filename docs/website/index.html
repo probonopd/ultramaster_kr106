@@ -435,6 +435,18 @@
     <h2>Changelog</h2>
 
     <details open>
+      <summary><span class="ver">2.4.1</span> Oversampling fixes, performance</summary>
+      <ul>
+        <li>Fix sub oscillator PolyBLEP sign (use absolute value for symmetric correction)</li>
+        <li>Fix oscillator noise LP running at wrong rate when oversampled (pass oversampled rate to Init)</li>
+        <li>Fix VCF thermal noise envelope decay being oversampling-dependent (compute coefficient from sample rate)</li>
+        <li>Fix waveform switch ramp halving in duration at higher oversampling (derive from time constant)</li>
+        <li>Hoist audio taper exp() curves from per-sample to per-block in oscillator mixer</li>
+        <li>Replace powf() with expf(logf()) in VCF resonance rolloff inner loop</li>
+      </ul>
+    </details>
+
+    <details>
       <summary><span class="ver">2.4.0</span> DCO antialiasing</summary>
       <ul>
         <li>4th-order PolyBLEP (4-sample window) replaces 2nd-order for ~40 dB better alias suppression</li>

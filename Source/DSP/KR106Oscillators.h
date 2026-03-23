@@ -207,8 +207,7 @@ struct Oscillators {
     // Half-frequency square wave, phase-locked to saw reset.
     // PolyBLEP on every saw reset (both sub transitions), not just sync.
     float sub = mSubState ? -1.f : 1.f;
-    if (sawReset)
-      sub += PolyBLEP(mPos, cps) * (mSubState ? -1.f : 1.f);
+    sub -= fabsf(PolyBLEP(mPos, cps)) * (mSubState ? -1.f : 1.f);
 
     // --- Oscillator mixing ---
     // Pop-free crossfade when waveform switches change mid-note.
