@@ -431,6 +431,25 @@
     <h2>Changelog</h2>
 
     <details open>
+      <summary><span class="ver">2.3.1</span> MIDI learn, 1982 HPF, DSP calibration</summary>
+      <ul>
+        <li>MIDI learn: right-click any slider or knob to assign a CC, persisted to JSON</li>
+        <li>Multiple parameters can share a CC (e.g. Decay + Release on one knob)</li>
+        <li>Tooltip shows CC assignment; Shift+drag fine, Cmd+drag superfine</li>
+        <li>Patch bank scope mode (P key): 16&times;8 grid with drag-to-launch bouncing ball</li>
+        <li>Component variance editor with Robot/Human/Out of Tune presets</li>
+        <li>1982 continuous HPF (39&ndash;1394 Hz from 11 hardware measurements)</li>
+        <li>1982 VCF frequency recalibrated to 248 Hz at slider 5.5 (service manual)</li>
+        <li>1982 LFO rate circuit model (TA75558S integrator + Schmitt trigger)</li>
+        <li>IR3109 expo converter tanh saturation on 1982 VCF (40 kHz ceiling)</li>
+        <li>Classic VCF Frq Scale setting for authentic 1982 frequency curve</li>
+        <li>Mono retrigger setting, bender/ADSR mode as live performance params</li>
+        <li>Frequency-matched VCF and HPF slider remapping on 1982/1984 switch</li>
+        <li>Custom macOS .icns icon for standalone app</li>
+      </ul>
+    </details>
+
+    <details>
       <summary><span class="ver">2.3.0</span> Major VCF overhaul</summary>
       <ul>
         <li>4x oversampling (cascaded 2x polyphase stages) for clean self-oscillation up to 20 kHz</li>
