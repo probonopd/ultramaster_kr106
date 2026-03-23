@@ -424,8 +424,54 @@
     <li><strong>6 / 8 / 10 Voices</strong> Maximum polyphony. More voices use more CPU.</li>
     <li><strong>Ignore MIDI Velocity</strong> All notes play at full velocity, like the original hardware.</li>
     <li><strong>Limit Arp to Keyboard Range</strong> Arpeggio wraps notes back into the 61-key range instead of extending beyond it.</li>
+    <li><strong>Mono Retrigger</strong> When on (default), every new note in mono mode retriggers the envelope. When off, legato notes glide without retriggering.</li>
+    <li><strong>Classic VCF Frq Scale</strong> When on, 1982 mode uses the authentic Juno-6 VCF frequency curve and C1 keyboard tracking reference. When off (default), 1982 mode uses the 1984 frequency scale for better patch compatibility between modes.</li>
     <li><strong>VCF Oversample 2x / 4x</strong> Filter oversampling factor. 4x (default) gives clean self-oscillation tracking up to 20 kHz. 2x uses less CPU but may alias at high cutoff + high resonance.</li>
+    <li><strong>Component Variance</strong> Opens the per-voice variance editor. See below.</li>
   </ul>
+  </details>
+
+  <!-- ============================================================ -->
+  <details>
+  <summary style="flex-wrap: wrap;">
+    <h2>MIDI</h2>
+    <img src="midi.png" alt="KR-106 MIDI Learn" class="screenshot" style="margin-top: 0.8rem; pointer-events: none; flex-basis: 100%;">
+  </summary>
+
+  <h3>MIDI Learn</h3>
+  <p><strong>Right-click</strong> any slider to enter MIDI Learn mode. The tooltip shows "MIDI LEARN" and a green border appears around the control. Move any CC on your MIDI controller to assign it. The assignment is saved between sessions.</p>
+  <p>Multiple parameters can share the same CC &mdash; for example, assign Decay and Release to the same knob to control both in sync.</p>
+  <p>To reassign, right-click the slider again and send a new CC. Click anywhere else to cancel learn mode.</p>
+
+  <h3>Default CC Mapping</h3>
+  <p>The KR-106 responds to standard MIDI CC messages. If you assign a parameter to a CC via MIDI Learn, the user assignment replaces that parameter's default CC. Unassigned parameters continue to respond to their defaults.</p>
+  <table>
+    <tr><th>CC</th><th>Parameter</th></tr>
+    <tr><td>1</td><td>Mod Wheel (LFO trigger)</td></tr>
+    <tr><td>3</td><td>DCO LFO</td></tr>
+    <tr><td>5</td><td>Portamento Rate</td></tr>
+    <tr><td>7</td><td>VCA Level</td></tr>
+    <tr><td>9</td><td>DCO Sub</td></tr>
+    <tr><td>12</td><td>HPF</td></tr>
+    <tr><td>13</td><td>DCO Noise</td></tr>
+    <tr><td>64</td><td>Sustain Pedal (Hold)</td></tr>
+    <tr><td>70</td><td>Envelope Sustain</td></tr>
+    <tr><td>71</td><td>VCF Resonance</td></tr>
+    <tr><td>72</td><td>Envelope Release</td></tr>
+    <tr><td>73</td><td>Envelope Attack</td></tr>
+    <tr><td>74</td><td>VCF Frequency</td></tr>
+    <tr><td>75</td><td>Envelope Decay</td></tr>
+    <tr><td>76</td><td>VCF Env Mod</td></tr>
+    <tr><td>77</td><td>VCF LFO</td></tr>
+    <tr><td>78</td><td>VCF Keyboard Tracking</td></tr>
+    <tr><td>79</td><td>DCO PWM</td></tr>
+    <tr><td>80</td><td>LFO Rate</td></tr>
+    <tr><td>81</td><td>LFO Delay</td></tr>
+    <tr><td>82</td><td>Arp Rate</td></tr>
+  </table>
+
+  <h3>SysEx</h3>
+  <p>The KR-106 sends and receives Roland Juno-106 SysEx messages (F0 41 32 ...). A full SysEx dump is emitted on every preset change, and individual parameter changes are echoed as SysEx in real time. This allows two KR-106 instances to stay in sync, or a hardware Juno-106 to mirror the plugin's state.</p>
   </details>
 
 </main>

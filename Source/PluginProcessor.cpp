@@ -93,6 +93,8 @@ KR106AudioProcessor::KR106AudioProcessor()
   : AudioProcessor(BusesProperties()
       .withOutput("Output", juce::AudioChannelSet::stereo(), true))
 {
+  std::fill(std::begin(mParamCC), std::end(mParamCC), -1);
+
   // --- Sliders (0–1 range) ---
   using SFV = std::function<juce::String(float, int)>;
   using VFS = std::function<float(const juce::String&)>;
@@ -650,6 +652,30 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     else if (msg.isController())
     {
       int cc = msg.getControllerNumber();
+
+      // MIDI learn: capture first CC received while learning
+      int learnParam = mMidiLearnParam.load(std::memory_order_acquire);
+      if (learnParam >= 0)
+      {
+        mParamCC[learnParam] = cc;
+        mMidiLearnResult.store(cc, std::memory_order_release);
+        mMidiLearnParam.store(-1, std::memory_order_release);
+        continue;
+      }
+
+      // Apply user CC mappings (multiple params can share a CC)
+      bool userHandled = false;
+      for (int i = 0; i < kNumParams; i++)
+      {
+        if (mParamCC[i] == cc)
+        {
+          mParams[i]->setValueNotifyingHost(msg.getControllerValue() / 127.f);
+          userHandled = true;
+        }
+      }
+      // Hardcoded mappings: sustain pedal, mod wheel, and CC→param table.
+      // Skip the hardcoded map if the target param has a user MIDI learn assignment
+      // (the user assignment replaces the default for that param).
       if (cc == 64) // sustain pedal → toggle Hold
       {
         bool pedalDown = msg.getControllerValue() >= 64;
@@ -663,7 +689,8 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
       else if (kCCtoParam[cc] >= 0)
       {
         int param = kCCtoParam[cc];
-        if (param == kHpfFreq)
+        if (mParamCC[param] >= 0) {} // param has user assignment — skip default
+        else if (param == kHpfFreq)
         {
           int hpf = msg.getControllerValue() / 32; // 0-31→0, 32-63→1, 64-95→2, 96-127→3
           if (hpf > 3) hpf = 3;
@@ -1162,6 +1189,20 @@ void KR106AudioProcessor::loadGlobalSettings()
     v.mVCF.SetOversample(mVcfOversample);
   });
 
+  // Load MIDI learn CC map (param→CC, multiple params can share a CC)
+  auto ccMap = KR106PresetManager::getSetting("midiLearnMap");
+  if (ccMap.isObject())
+  {
+    auto* obj = ccMap.getDynamicObject();
+    for (auto& prop : obj->getProperties())
+    {
+      int param = prop.name.toString().getIntValue();
+      int cc = (int)prop.value;
+      if (param >= 0 && param < kNumParams && cc >= 0 && cc < 128)
+        mParamCC[param] = cc;
+    }
+  }
+
   // Load per-voice variance values (if saved)
   auto variance = KR106PresetManager::getSetting("voiceVariance");
   if (variance.isArray())
@@ -1190,6 +1231,45 @@ void KR106AudioProcessor::saveGlobalSettings()
     for (int p = 0; p < 6; p++)
       varArr.add(static_cast<double>(mDSP.GetVoice(v)->GetVariance(p)));
   KR106PresetManager::saveSetting("voiceVariance", varArr);
+
+  // Save MIDI learn CC map (param→CC, only non-empty entries)
+  auto* ccObj = new juce::DynamicObject();
+  for (int i = 0; i < kNumParams; i++)
+    if (mParamCC[i] >= 0)
+      ccObj->setProperty(juce::String(i), mParamCC[i]);
+  KR106PresetManager::saveSetting("midiLearnMap", juce::var(ccObj));
+}
+
+// --- MIDI Learn ---
+
+void KR106AudioProcessor::startMidiLearn(int paramIdx)
+{
+  mMidiLearnResult.store(-1, std::memory_order_relaxed);
+  mMidiLearnParam.store(paramIdx, std::memory_order_release);
+}
+
+void KR106AudioProcessor::cancelMidiLearn()
+{
+  mMidiLearnParam.store(-1, std::memory_order_relaxed);
+  mMidiLearnResult.store(-1, std::memory_order_relaxed);
+}
+
+void KR106AudioProcessor::clearMidiLearn(int paramIdx)
+{
+  if (paramIdx >= 0 && paramIdx < kNumParams)
+    mParamCC[paramIdx] = -1;
+  saveGlobalSettings();
+}
+
+int KR106AudioProcessor::getCCForParam(int paramIdx) const
+{
+  // User map takes priority
+  if (paramIdx >= 0 && paramIdx < kNumParams && mParamCC[paramIdx] >= 0)
+    return mParamCC[paramIdx];
+  // Fall back to hardcoded map
+  for (int cc = 0; cc < 128; cc++)
+    if (kCCtoParam[cc] == paramIdx) return cc;
+  return -1;
 }
 
 juce::AudioProcessorEditor* KR106AudioProcessor::createEditor()

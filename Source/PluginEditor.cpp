@@ -47,6 +47,7 @@ KR106Editor::KR106Editor(KR106AudioProcessor& p)
     auto* tip = &mTooltip;
 
     // Helper: create control, set bounds, add as visible child, store in array
+    // Automatically wires up MIDI learn for sliders that have a param.
     auto add = [&](auto* ctrl, int x, int y, int w, int h) {
         ctrl->setBounds(x, y, w, h);
         addAndMakeVisible(ctrl);
@@ -54,23 +55,35 @@ KR106Editor::KR106Editor(KR106AudioProcessor& p)
         return ctrl;
     };
 
+    // Helper: create slider with MIDI learn wired up
+    auto addSlider = [&](int paramIdx, auto* ctrl, int x, int y, int w, int h) {
+        ctrl->setMidiLearn(&p, paramIdx);
+        return add(ctrl, x, y, w, h);
+    };
+
     // Power section
     add(new KR106PowerSwitch(param(kPower)),              46,  40,  15, 19);
-    add(new KR106Knob(param(kTuning), smallKnob, tip, 32), 40,  64,  28, 27);
+    { auto* k = new KR106Knob(param(kTuning), smallKnob, tip, 32);
+      k->setMidiLearn(&p, kTuning);
+      add(k, 40, 64, 28, 27); }
 
     // Performance section
-    add(new KR106Knob(param(kMasterVol), smallKnob, tip, 32),  30, 118,  28, 27);
+    { auto* k = new KR106Knob(param(kMasterVol), smallKnob, tip, 32);
+      k->setMidiLearn(&p, kMasterVol);
+      add(k, 30, 118, 28, 27); }
     mClipLED = dynamic_cast<KR106ClipLED*>(
         add(new KR106ClipLED(ledRed, 2.5f), 62, 127, 9, 9));
     mClipLED2 = dynamic_cast<KR106ClipLED*>(
         add(new KR106ClipLED(ledRed, 1.5f), 53, 127, 9, 9));
-    add(new KR106Knob(param(kPortaRate), smallKnob, tip, 32),  66, 118,  28, 27);
+    { auto* k = new KR106Knob(param(kPortaRate), smallKnob, tip, 32);
+      k->setMidiLearn(&p, kPortaRate);
+      add(k, 66, 118, 28, 27); }
     add(new KR106Switch(param(kPortaMode), switchV, 3),    92, 161,   9, 24);
 
     // Bender sensitivity sliders
-    add(new KR106Slider(param(kBenderDco), tip, sliderHdl),  37, 147, 13, 49);
-    add(new KR106Slider(param(kBenderVcf), tip, sliderHdl),  55, 147, 13, 49);
-    add(new KR106Slider(param(kBenderLfo), tip, sliderHdl),  73, 147, 13, 49);
+    addSlider(kBenderDco, new KR106Slider(param(kBenderDco), tip, sliderHdl),  35, 147, 17, 49);
+    addSlider(kBenderVcf, new KR106Slider(param(kBenderVcf), tip, sliderHdl),  53, 147, 17, 49);
+    addSlider(kBenderLfo, new KR106Slider(param(kBenderLfo), tip, sliderHdl),  71, 147, 17, 49);
 
     // Pitch bend lever with vertical LFO trigger
     add(new KR106Bender(param(kBender), benderGrad, &p),   66, 200,  60, 12);
@@ -82,16 +95,16 @@ KR106Editor::KR106Editor(KR106AudioProcessor& p)
 
     add(new KR106Switch(param(kArpMode),  switchV, 3), 175, 46, 9, 24);
     add(new KR106Switch(param(kArpRange), switchV, 3), 212, 46, 9, 24);
-    add(new KR106Slider(param(kArpRate), tip, sliderHdl),         230, 33, 13, 49);
+    addSlider(kArpRate, new KR106Slider(param(kArpRate), tip, sliderHdl), 228, 33, 17, 49);
 
     // === LFO SECTION ===
-    add(new KR106Slider(param(kLfoRate), tip, sliderHdl),          252, 33, 13, 49);
-    add(new KR106Slider(param(kLfoDelay), tip, sliderHdl),         270, 33, 13, 49);
+    addSlider(kLfoRate, new KR106Slider(param(kLfoRate), tip, sliderHdl), 250, 33, 17, 49);
+    addSlider(kLfoDelay, new KR106Slider(param(kLfoDelay), tip, sliderHdl), 268, 33, 17, 49);
     add(new KR106Switch(param(kLfoMode), switchV, 2),   294, 46,  9, 24);
 
     // === DCO SECTION ===
-    add(new KR106Slider(param(kDcoLfo), tip, sliderHdl),           316, 33, 13, 49);
-    add(new KR106Slider(param(kDcoPwm), tip, sliderHdl),           334, 33, 13, 49);
+    addSlider(kDcoLfo, new KR106Slider(param(kDcoLfo), tip, sliderHdl), 314, 33, 17, 49);
+    addSlider(kDcoPwm, new KR106Slider(param(kDcoPwm), tip, sliderHdl), 332, 33, 17, 49);
     add(new KR106Switch(param(kPwmMode), switchV, 3),   351, 46,  9, 24);
 
     // DCO waveform buttons+LEDs
@@ -103,29 +116,31 @@ KR106Editor::KR106Editor(KR106AudioProcessor& p)
     add(new KR106HorizontalSwitch(param(kOctTranspose), switchH, 3), 389, 84, 24, 9);
 
     // DCO Sub/Noise sliders
-    add(new KR106Slider(param(kDcoSub), tip, sliderHdl),   430, 33, 13, 49);
-    add(new KR106Slider(param(kDcoNoise), tip, sliderHdl), 448, 33, 13, 49);
+    addSlider(kDcoSub, new KR106Slider(param(kDcoSub), tip, sliderHdl), 430, 33, 17, 49);
+    addSlider(kDcoNoise, new KR106Slider(param(kDcoNoise), tip, sliderHdl), 446, 33, 17, 49);
 
     // === HPF SECTION ===
-    add(new KR106HPFSlider(param(kHpfFreq), tip, sliderHdl, &p.mDSP.mAdsrMode), 471, 33, 17, 49);
+    { auto* s = new KR106HPFSlider(param(kHpfFreq), tip, sliderHdl, &p.mDSP.mAdsrMode);
+      s->setMidiLearn(&p, kHpfFreq);
+      add(s, 471, 33, 17, 49); }
 
     // === VCF SECTION ===
-    add(new KR106Slider(param(kVcfFreq), tip, sliderHdl),          496, 33, 13, 49);
-    add(new KR106Slider(param(kVcfRes), tip, sliderHdl),           514, 33, 13, 49);
+    addSlider(kVcfFreq, new KR106Slider(param(kVcfFreq), tip, sliderHdl), 496, 33, 17, 49);
+    addSlider(kVcfRes, new KR106Slider(param(kVcfRes), tip, sliderHdl), 513, 33, 17, 49);
     add(new KR106Switch(param(kVcfEnvInv), switchV, 2), 536, 46,  9, 24);
-    add(new KR106Slider(param(kVcfEnv), tip, sliderHdl),           552, 33, 13, 49);
-    add(new KR106Slider(param(kVcfLfo), tip, sliderHdl),           570, 33, 13, 49);
-    add(new KR106Slider(param(kVcfKbd), tip, sliderHdl),           588, 33, 13, 49);
+    addSlider(kVcfEnv, new KR106Slider(param(kVcfEnv), tip, sliderHdl), 550, 33, 17, 49);
+    addSlider(kVcfLfo, new KR106Slider(param(kVcfLfo), tip, sliderHdl), 568, 33, 17, 49);
+    addSlider(kVcfKbd, new KR106Slider(param(kVcfKbd), tip, sliderHdl), 586, 33, 17, 49);
 
     // === VCA SECTION ===
     add(new KR106Switch(param(kVcaMode), switchV, 2), 614, 45,  9, 24);
-    add(new KR106Slider(param(kVcaLevel), tip, sliderHdl),       638, 33, 13, 49);
+    addSlider(kVcaLevel, new KR106Slider(param(kVcaLevel), tip, sliderHdl), 635, 33, 17, 49);
 
     // === ENVELOPE SECTION ===
-    add(new KR106Slider(param(kEnvA), tip, sliderHdl), 659, 33, 13, 49);
-    add(new KR106Slider(param(kEnvD), tip, sliderHdl), 677, 33, 13, 49);
-    add(new KR106Slider(param(kEnvS), tip, sliderHdl), 695, 33, 13, 49);
-    add(new KR106Slider(param(kEnvR), tip, sliderHdl), 713, 33, 13, 49);
+    addSlider(kEnvA, new KR106Slider(param(kEnvA), tip, sliderHdl), 657, 33, 17, 49);
+    addSlider(kEnvD, new KR106Slider(param(kEnvD), tip, sliderHdl), 675, 33, 17, 49);
+    addSlider(kEnvS, new KR106Slider(param(kEnvS), tip, sliderHdl), 693, 33, 17, 49);
+    addSlider(kEnvR, new KR106Slider(param(kEnvR), tip, sliderHdl), 711, 33, 17, 49);
 
     // ADSR mode: horizontal 2-way (centered below envelope sliders)
     add(new KR106HorizontalSwitch(param(kAdsrMode), switchH, 2), 680, 84, 24, 9);
@@ -182,6 +197,13 @@ KR106Editor::~KR106Editor()
 
 void KR106Editor::mouseDown(const juce::MouseEvent& e)
 {
+    // Cancel MIDI learn if active
+    if (mProcessor.mMidiLearnParam.load(std::memory_order_relaxed) >= 0)
+    {
+        mProcessor.cancelMidiLearn();
+        mTooltip.hide();
+        return;
+    }
     if (!e.mods.isPopupMenu()) return;
     showSettingsMenu();
 }
@@ -534,6 +556,17 @@ void KR106Editor::timerCallback()
         }
     }
 
+    // Check for MIDI learn completion
+    {
+        int learnedCC = mProcessor.mMidiLearnResult.exchange(-1, std::memory_order_acquire);
+        if (learnedCC >= 0)
+        {
+            mTooltip.setLine2("CC " + juce::String(learnedCC));
+            mTooltip.update();
+            mProcessor.saveGlobalSettings();
+        }
+    }
+
     // Update scope, keyboard, and clip LED from processor state
     mScope->updateFromProcessor();
     mKeyboard->updateFromProcessor();
@@ -550,5 +583,8 @@ void KR106Editor::timerCallback()
         for (auto* ctrl : mControls)
             if (ctrl != mScope && ctrl != mKeyboard)
                 ctrl->repaint();
+        // Update tooltip if visible (CC changes update value externally)
+        if (mTooltip.isVisible())
+            mTooltip.update();
     }
 }

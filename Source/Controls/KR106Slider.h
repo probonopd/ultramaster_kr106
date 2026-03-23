@@ -4,6 +4,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "KR106Tooltip.h"
+#include "PluginProcessor.h"
 
 // Pixel-perfect vertical fader — port of KR106SliderControl from iPlug2.
 // 13×49 draw area: white/gray tick marks, black well, gray thumb.
@@ -13,6 +14,9 @@ public:
   KR106Slider(juce::RangedAudioParameter* param, KR106Tooltip* tip = nullptr,
               const juce::Image& handleImg = {})
     : mParam(param), mTooltip(tip), mHandleImg(handleImg) {}
+
+  void setMidiLearn(KR106AudioProcessor* proc, int paramIdx)
+  { mProcessor = proc; mParamIdx = paramIdx; }
 
   void paint(juce::Graphics& g) override
   {
@@ -32,10 +36,11 @@ public:
     const auto dark  = juce::Colour(64, 64, 64);
     const auto light = juce::Colour(153, 153, 153);
 
-    // Well
-    g.setColour(black); g.fillRect(5.f, 1.f, 3.f, 47.f);
-    vLine(dark, 4, 1, 48); vLine(dark, 8, 1, 48);
-    hLine(dark, 5, 0, 8);  hLine(dark, 5, 48, 8);
+    // Well (centered in 17px: offset 2px from 13px layout)
+    static constexpr float kOfs = 2.f;
+    g.setColour(black); g.fillRect(5.f + kOfs, 1.f, 3.f, 47.f);
+    vLine(dark, 4 + kOfs, 1, 48); vLine(dark, 8 + kOfs, 1, 48);
+    hLine(dark, 5 + kOfs, 0, 8 + kOfs);  hLine(dark, 5 + kOfs, 48, 8 + kOfs);
 
     // Handle
     float val = mParam ? mParam->getValue() : 0.f;
@@ -45,23 +50,39 @@ public:
     {
       float hw = mHandleImg.getWidth() / 2.f;
       float hh = mHandleImg.getHeight() / 2.f;
-      float hx = (13.f - hw) * 0.5f;
+      float hx = (17.f - hw) * 0.5f;
       g.drawImage(mHandleImg,
                   hx, fy - hh * 0.5f + 1.f, hw, hh,
                   0, 0, mHandleImg.getWidth(), mHandleImg.getHeight());
     }
     else
     {
-      pixelRect(black, 1.f, fy - 2, 12.f, fy + 3);
-      hLine(dark, 2, fy - 1, 11);
-      hLine(dark, 2, fy + 1, 11);
-      hLine(white, 2, fy, 11);
+      pixelRect(black, 1.f + kOfs, fy - 2, 12.f + kOfs, fy + 3);
+      hLine(dark, 2 + kOfs, fy - 1, 11 + kOfs);
+      hLine(dark, 2 + kOfs, fy + 1, 11 + kOfs);
+      hLine(white, 2 + kOfs, fy, 11 + kOfs);
+    }
+
+    paintMidiLearnBorder(g);
+  }
+
+  void paintMidiLearnBorder(juce::Graphics& g)
+  {
+    if (mProcessor && mParamIdx >= 0
+        && mProcessor->mMidiLearnParam.load(std::memory_order_relaxed) == mParamIdx)
+    {
+      g.setColour(juce::Colour(0, 255, 0));
+      g.drawRect(getLocalBounds(), 1);
     }
   }
 
   void mouseEnter(const juce::MouseEvent&) override
   {
-    if (mTooltip && !mDragging) mTooltip->show(mParam, this);
+    if (mTooltip && !mDragging)
+    {
+      updateCCLine();
+      mTooltip->show(mParam, this);
+    }
   }
 
   void mouseExit(const juce::MouseEvent&) override
@@ -71,8 +92,21 @@ public:
 
   void mouseDown(const juce::MouseEvent& e) override
   {
+    if (e.mods.isPopupMenu() && mProcessor && mParamIdx >= 0)
+    {
+      handleMidiLearnClick();
+      return;
+    }
+    // Left click cancels MIDI learn if active
+    if (mProcessor && mProcessor->mMidiLearnParam.load(std::memory_order_relaxed) >= 0)
+    {
+      mProcessor->cancelMidiLearn();
+      if (mTooltip) mTooltip->hide();
+      repaint();
+      return;
+    }
     mDragging = true;
-    mRightDrag = e.mods.isPopupMenu();
+    mRightDrag = false;
     mAccumVal = mParam ? mParam->getValue() : 0.f;
     mLastRawDY = 0.f;
     if (mParam) mParam->beginChangeGesture();
@@ -92,8 +126,8 @@ public:
     // Scale by display DPI so non-retina screens get the same physical throw
     float dpiScale = std::max(1.f, static_cast<float>(getTopLevelComponent()->getDesktopScaleFactor()));
     float gearing = 127.f;
-    if (mRightDrag) gearing *= (e.mods.isShiftDown() ? 100.f : 10.f);
-    else if (e.mods.isShiftDown()) gearing *= 10.f;
+    if (e.mods.isCommandDown()) gearing *= 100.f;       // Cmd/Ctrl = superfine
+    else if (e.mods.isShiftDown()) gearing *= 10.f;     // Shift = fine
     gearing /= dpiScale;
     mAccumVal = juce::jlimit(0.f, 1.f, mAccumVal + -increment / gearing);
     float newVal = mAccumVal;
@@ -104,6 +138,7 @@ public:
 
   void mouseUp(const juce::MouseEvent& e) override
   {
+    if (!mDragging) return; // right-click MIDI learn, no drag to clean up
     mDragging = false;
     if (mParam) mParam->endChangeGesture();
     if (mTooltip) mTooltip->hide();
@@ -242,8 +277,35 @@ private:
     return 0; // continuous
   }
 
+  void updateCCLine()
+  {
+    if (!mTooltip) return;
+    if (!mProcessor || mParamIdx < 0) { mTooltip->setLine2({}); return; }
+    if (mProcessor->mMidiLearnParam.load(std::memory_order_relaxed) == mParamIdx)
+    {
+      mTooltip->setLine2("MIDI LEARN");
+      return;
+    }
+    int cc = mProcessor->getCCForParam(mParamIdx);
+    if (cc >= 0)
+      mTooltip->setLine2("CC " + juce::String(cc));
+    else
+      mTooltip->setLine2({});
+  }
+
+  void handleMidiLearnClick()
+  {
+    if (!mProcessor || mParamIdx < 0) return;
+    mProcessor->startMidiLearn(mParamIdx);
+    updateCCLine();
+    if (mTooltip) mTooltip->show(mParam, this);
+    repaint();
+  }
+
 protected:
   juce::RangedAudioParameter* mParam = nullptr;
+  KR106AudioProcessor* mProcessor = nullptr;
+  int mParamIdx = -1;
 
 private:
   KR106Tooltip* mTooltip = nullptr;
@@ -290,11 +352,7 @@ public:
         g.fillRect(1.f, y, 15.f, 1.f);
       }
     }
-    // Offset well+thumb 4px right to center in wider control
-    g.saveState();
-    g.setOrigin(2, 0);
     KR106Slider::paint(g);
-    g.restoreState();
   }
 
   void mouseDrag(const juce::MouseEvent& e) override

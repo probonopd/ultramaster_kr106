@@ -33,7 +33,7 @@ public:
     static constexpr int kRowH = 14;
 
     int calcWidth() const { return kTotalCols * kColW; }
-    int calcHeight() const { return kTotalRows * kRowH; }
+    int calcHeight() const { return kTotalRows * kRowH + 2; }
 
     void showAt(juce::Rectangle<int> bounds)
     {
@@ -71,14 +71,16 @@ public:
             g.setColour(bright());
             g.drawSingleLineText(label, r.getX() + 4, r.getBottom() - 2);
         };
-        drawBtn(mTunePoorlyRect,  "Out of Tune",  -2);
-        drawBtn(mTuneLazyRect,    "Human Tune",   -3);
-        drawBtn(mTunePerfectRect, "Robot Tune",   -4);
+        drawBtn(mTunePoorlyRect,  " Out of Tune ",  -2);
+        drawBtn(mTuneLazyRect,    " Human Tune ",   -3);
+        drawBtn(mTunePerfectRect, " Robot Tune ",   -4);
 
-        // Header row
+        // Header row (inverted: bright bg, black text)
         int headerY = kRowH;
         int headerH = 2 * kRowH - headerY;
         g.setColour(bright());
+        g.fillRect(0, headerY, w, headerH);
+        g.setColour(bg());
         g.drawSingleLineText("VOICE", 4, headerY + headerH - 2);
         for (int p = 0; p < kNumParams; p++)
         {

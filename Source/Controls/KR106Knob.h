@@ -4,6 +4,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "KR106Tooltip.h"
+#include "PluginProcessor.h"
 
 // ============================================================================
 // KR106Knob — Bitmap knob with manhattan distance drag.
@@ -26,6 +27,9 @@ public:
     }
 
     void setBackgroundImage(const juce::Image& img) { mBgImage = img; }
+
+    void setMidiLearn(KR106AudioProcessor* proc, int paramIdx)
+    { mProcessor = proc; mParamIdx = paramIdx; }
 
     void paint(juce::Graphics& g) override
     {
@@ -55,11 +59,23 @@ public:
         g.drawImage(mSpriteSheet,
                     ox, oy, frameW, frameH,                        // dest: 1x
                     idx * frameW2x, 0, frameW2x, h2x);            // src: 2x
+
+        // Green border when in MIDI learn mode
+        if (mProcessor && mParamIdx >= 0
+            && mProcessor->mMidiLearnParam.load(std::memory_order_relaxed) == mParamIdx)
+        {
+            g.setColour(juce::Colour(0, 255, 0));
+            g.drawRect(getLocalBounds(), 1);
+        }
     }
 
     void mouseEnter(const juce::MouseEvent&) override
     {
-        if (mTooltip && !mDragging) mTooltip->show(mParam, this);
+        if (mTooltip && !mDragging)
+        {
+            updateCCLine();
+            mTooltip->show(mParam, this);
+        }
     }
 
     void mouseExit(const juce::MouseEvent&) override
@@ -69,7 +85,23 @@ public:
 
     void mouseDown(const juce::MouseEvent& e) override
     {
+        if (e.mods.isPopupMenu() && mProcessor && mParamIdx >= 0)
+        {
+            mProcessor->startMidiLearn(mParamIdx);
+            updateCCLine();
+            if (mTooltip) mTooltip->show(mParam, this);
+            repaint();
+            return;
+        }
         if (e.mods.isPopupMenu()) return;
+        // Left click cancels MIDI learn if active
+        if (mProcessor && mProcessor->mMidiLearnParam.load(std::memory_order_relaxed) >= 0)
+        {
+            mProcessor->cancelMidiLearn();
+            if (mTooltip) mTooltip->hide();
+            repaint();
+            return;
+        }
         mDragging = true;
         mAccumVal = mParam ? mParam->getValue() : 0.f;
         mLastRawDelta = 0.f;
@@ -94,7 +126,10 @@ public:
         // Cumulative gearing: shift only affects new movement
         // Scale by display DPI so non-retina screens get the same physical throw
         float dpiScale = std::max(1.f, static_cast<float>(getTopLevelComponent()->getDesktopScaleFactor()));
-        float gearing = (e.mods.isShiftDown() ? 1270.f : 127.f) / dpiScale;
+        float gearing = 127.f;
+        if (e.mods.isCommandDown()) gearing *= 100.f;
+        else if (e.mods.isShiftDown()) gearing *= 10.f;
+        gearing /= dpiScale;
         mAccumVal = juce::jlimit(0.f, 1.f, mAccumVal + increment / gearing);
         float newVal = mAccumVal;
 
@@ -114,6 +149,7 @@ public:
 
     void mouseUp(const juce::MouseEvent& e) override
     {
+        if (!mDragging) return;
         mDragging = false;
         if (mParam) mParam->endChangeGesture();
         if (mTooltip) mTooltip->hide();
@@ -125,10 +161,28 @@ public:
         juce::Desktop::getInstance().getMainMouseSource().setScreenPosition(screenPos.toFloat());
     }
 
+    void updateCCLine()
+    {
+        if (!mTooltip) return;
+        if (!mProcessor || mParamIdx < 0) { mTooltip->setLine2({}); return; }
+        if (mProcessor->mMidiLearnParam.load(std::memory_order_relaxed) == mParamIdx)
+        {
+            mTooltip->setLine2("MIDI LEARN");
+            return;
+        }
+        int cc = mProcessor->getCCForParam(mParamIdx);
+        if (cc >= 0)
+            mTooltip->setLine2("CC " + juce::String(cc));
+        else
+            mTooltip->setLine2({});
+    }
+
 private:
     juce::RangedAudioParameter* mParam = nullptr;
     juce::Image mSpriteSheet;
     KR106Tooltip* mTooltip = nullptr;
+    KR106AudioProcessor* mProcessor = nullptr;
+    int mParamIdx = -1;
     int mNumFrames = 32;
     juce::Image mBgImage;
     float mAccumVal = 0.f;

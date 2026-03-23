@@ -98,6 +98,16 @@ public:
   std::bitset<128> mKeyboardHeld;
   std::atomic<bool> mLfoTriggered{false}; // CC1 mod state (audio→UI)
 
+  // MIDI learn: param→CC map (multiple params can share a CC)
+  int mParamCC[kNumParams];                 // param→CC (-1 = no user mapping)
+  std::atomic<int> mMidiLearnParam{-1};     // param waiting for CC (-1 = inactive)
+  std::atomic<int> mMidiLearnResult{-1};    // CC number captured (audio→UI)
+
+  void startMidiLearn(int paramIdx);
+  void cancelMidiLearn();
+  void clearMidiLearn(int paramIdx);
+  int getCCForParam(int paramIdx) const;    // returns CC or -1
+
 private:
   // Parameter listener: push param changes to DSP
   void parameterChanged(int paramIdx, float newValue);
