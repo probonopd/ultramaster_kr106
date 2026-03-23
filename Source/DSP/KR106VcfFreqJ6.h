@@ -9,7 +9,6 @@
 //   - 8 direct measurements (slider 5–8.5, self-oscillating filter)
 //   - 6 repeated trials each at slider 4, 5, 6 to quantify repositioning noise
 //   - 6-voice unison test confirming inter-filter spread is only ±17 cents
-//   - Self-oscillation sweep confirming 20,568 Hz hardware ceiling
 //
 // Circuit (from Juno-6 service manual, Module Board schematic):
 //   VR4: 50K(B) linear slider pot, 0V (bottom) to +15V (top)
@@ -29,9 +28,9 @@
 //   x=1:   I = 260 µA
 //
 // The exponential converter maps this current to frequency:
-//   log2(f) = −12.1394 + 116879.07 · I
-// Hardware limits: floor ≈ 1 Hz (expo converter minimum),
-//                  ceiling ≈ 20,568 Hz (expo converter saturation)
+//   log2(f) = −12.0674 + 116879.07 · I
+// Calibrated so slider 5.5 produces 248 Hz self-oscillation, matching
+// the Juno-6 service manual test procedure (VCF FREQ at midpoint).
 
 namespace kr106
 {
@@ -40,9 +39,15 @@ inline float j6_vcf_freq_from_slider(float s)
 {
   float R_th = s * (1.f - s) * 50000.f;
   float I = (15.f * s + 11.f) / (R_th + 100000.f);
-  float f = powf(2.f, -12.1394f + 116879.07f * I);
-  if (f < 1.05f) f = 1.05f;
-  if (f > 20568.f) f = 20568.f;
+  float f = powf(2.f, -12.0674f + 116879.07f * I);
+
+  // Same IR3109 expo converter saturation as J106 (shared hardware)
+  static constexpr float kThresh = 20000.f;
+  static constexpr float kCeil   = 40000.f;
+  static constexpr float kRange  = kCeil - kThresh;
+  if (f > kThresh)
+    f = kThresh + kRange * tanhf((f - kThresh) / kRange);
+
   return f;
 }
 

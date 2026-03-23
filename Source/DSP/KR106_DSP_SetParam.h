@@ -18,7 +18,8 @@ void KR106DSP<T>::SetParam(int paramIdx, double value)
     kBender, kTuning, kPower,
     kPortaMode, kPortaRate,
     kTransposeOffset, kBenderLfo,
-    kAdsrMode
+    kAdsrMode,
+    kMasterVol
   };
 
   switch (paramIdx)
@@ -43,10 +44,12 @@ void KR106DSP<T>::SetParam(int paramIdx, double value)
     case kVcfFreq: {
       mSliderVcfFreq = static_cast<float>(value);
       float s = mSliderVcfFreq;
-      float hz = kr106::j6_vcf_freq_from_slider(s);
+      float hzJ6 = kr106::j6_vcf_freq_from_slider(s);
       uint16_t cutoffInt = static_cast<uint16_t>(s * 0x3F80);
-      ForEachVoice([hz, cutoffInt](kr106::Voice<T>& v) {
-        v.mVcfFreq = hz;
+      float hzJ106 = kr106::dacToHz(cutoffInt);
+      ForEachVoice([hzJ6, hzJ106, cutoffInt](kr106::Voice<T>& v) {
+        v.mVcfFreq = hzJ6;
+        v.mVcfFreqJ106 = hzJ106;
         v.mVcfCutoffInt = cutoffInt;
       });
       break;
@@ -209,6 +212,7 @@ void KR106DSP<T>::SetParam(int paramIdx, double value)
       SetParam(kVcfEnv, mSliderVcfEnv);
       SetParam(kVcfKbd, mSliderVcfKbd);
       SetParam(kBenderVcf, mSliderBenderVcf);
+      SetParam(kHpfFreq, mSliderHpf);
       break;
     }
     case kBender:
@@ -227,9 +231,23 @@ void KR106DSP<T>::SetParam(int paramIdx, double value)
       mLFO.SetMode(static_cast<int>(value));
       break;
 
-    case kHpfFreq:
-      mHPF.SetMode(static_cast<int>(value));
+    case kHpfFreq: {
+      mSliderHpf = static_cast<float>(value);
+      if (mAdsrMode == 0)
+      {
+        // Map J106 preset values to J6 continuous positions
+        // 0,1 (bass boost/flat) → 0; 2 (240Hz) → 0.685; 3 (720Hz) → 2.202
+        static constexpr float kJ106toJ6[] = { 0.f, 0.f, 0.685f, 2.202f };
+        float v = mSliderHpf;
+        int iv = static_cast<int>(v + 0.5f);
+        if (iv >= 0 && iv <= 3 && std::abs(v - iv) < 0.01f)
+          v = kJ106toJ6[iv];
+        mHPF.SetFreqHz(getJuno6HPFFreqPCHIP(v / 3.f));
+      }
+      else
+        mHPF.SetMode(static_cast<int>(mSliderHpf + 0.5f));
       break;
+    }
 
     case kVcaLevel: {
       // Master VCA (IC5, µPC1252H2) — final stage summing all 6 voices.

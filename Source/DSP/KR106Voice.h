@@ -35,7 +35,9 @@ public:
   float mDcoPwm       = 0.f;
   float mDcoSub       = 1.f;
   float mDcoNoise     = 0.f;
-  float mVcfFreq      = 700.f; // Hz
+  float mVcfFreq      = 700.f; // Hz (J6 classic mode)
+  float mVcfFreqJ106  = 700.f; // Hz (J106-compatible mode)
+  bool  mJ6ClassicVcf = false; // true = J6 analog VCF curve + C1 KBD ref
   float mVcfRes       = 0.f;
   float mVcfEnv       = 0.f;
   float mVcfLfo       = 0.f;
@@ -98,6 +100,58 @@ public:
   float mVcaGainScale  = 1.f; // linear gain (±0.5 dB)
   float mPwMinOffset   = 0.f; // ±0.02 around 0.50 (PW range low end)
   float mPwMaxOffset   = 0.f; // ±0.02 around 0.95 (PW range high end)
+
+  // Number of variance parameters per voice
+  static constexpr int kNumVarianceParams = 6;
+
+  // Get/set variance by index (for UI grid)
+  float GetVariance(int idx) const
+  {
+    switch (idx) {
+      case 0: return mVcfFreqOffset;
+      case 1: return mPitchOffset;
+      case 2: return mADSR.mTimeScale - 1.f; // store as offset from 1.0
+      case 3: return mVcaGainScale - 1.f;     // store as offset from 1.0
+      case 4: return mPwMinOffset;
+      case 5: return mPwMaxOffset;
+      default: return 0.f;
+    }
+  }
+
+  void SetVariance(int idx, float v)
+  {
+    switch (idx) {
+      case 0: mVcfFreqOffset   = v; break;
+      case 1: mPitchOffset     = v; break;
+      case 2: mADSR.mTimeScale = 1.f + v; break;
+      case 3: mVcaGainScale    = 1.f + v; break;
+      case 4: mPwMinOffset     = v; break;
+      case 5: mPwMaxOffset     = v; break;
+    }
+  }
+
+  // Variance parameter metadata for UI display
+  struct VarianceInfo {
+    const char* name;     // column header
+    float range;          // max absolute value
+    float step;           // drag/arrow increment
+    float displayScale;   // multiply raw value for display
+    float displayOffset;  // add after scaling (for absolute display)
+    const char* unit;     // display unit suffix
+  };
+
+  static const VarianceInfo& GetVarianceInfo(int idx)
+  {
+    static const VarianceInfo info[kNumVarianceParams] = {
+      { "VCF FRQ", 0.10f,  0.01f,        100.f,  0.f, "cts" }, // ±10 cts cutoff
+      { "DCO FRQ", 0.025f, 1.f/1200.f, 1200.f,  0.f, "cts" }, // ±30 cts, step 1 ct
+      { "ADSR",    0.15f,  0.01f,       100.f,  0.f, "pct" }, // ±15% timing
+      { "VCA",     0.12f,  0.01f,       100.f,  0.f, "pct" }, // ±12% gain
+      { "PW Lo",   0.05f,  0.01f,       100.f, 50.f, "pct" }, // 48–52% (base 50)
+      { "PW Hi",   0.05f,  0.01f,       100.f, 95.f, "pct" }, // 93–97% (base 95)
+    };
+    return info[idx];
+  }
 
   void InitVariance(int voiceIndex)
   {
@@ -556,9 +610,15 @@ public:
 
         float envScale = (mVcfEnvInvert > 0) ? kEnvScale : kEnvInvScale;
 
-        float vcfFrq = logf(mVcfFreq) + mVcfFreqOffset;
+        // Classic J6: analog slider curve, KBD tracking from C1 (32.703 Hz)
+        // J106-compatible (default): J106 freq curve, KBD tracking from C4 (261.626 Hz)
+        // The 3-octave difference in KBD ref compensates for the J106's higher base freq,
+        // so patches with keyboard tracking sound correct across both engines.
+        float vcfBaseHz = mJ6ClassicVcf ? mVcfFreq : mVcfFreqJ106;
+        float kbdRef    = mJ6ClassicVcf ? 32.703f  : 261.626f;
+        float vcfFrq = logf(vcfBaseHz) + mVcfFreqOffset;
 
-        vcfFrq += logf(baseFreq / 32.703f) * mVcfKbd; // keyboard tracking: 1.0 = 100% = 1V/oct
+        vcfFrq += logf(baseFreq / kbdRef) * mVcfKbd;
         vcfFrq += env * mVcfEnv * envScale * float(mVcfEnvInvert);
         vcfFrq += lfo * mVcfLfo * kSemiToLogFreq;
         vcfFrq += 4.15888f * mRawBend * mBendVcf; // bender (6 oct range, tuned separately)

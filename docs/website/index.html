@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="favicon.ico">
 <title>Ultramaster KR-106 — Virtual Analog Synthesizer</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Oswald:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
@@ -409,7 +410,7 @@
 
       <p>A lot has changed since the late 90s. Hardware is exponentially faster and DSP methodology has evolved. We have spent time heavily recalibrating and refining the engine for the modern era. While the interface remains intentionally familiar, the internal architecture has been overhauled for better performance and precision.</p>
       
-      <p>We are rereleasing Juno as an open-source project under the GPL to give back to the community that inspired us from the start. Our goal is to make this as accurate as humanly possible, and we would love for you to help us get there.</p>
+      <p>We are rereleasing KR-106 as an open-source project under the GPL to give back to the community that inspired us from the start. Our goal is to make this as accurate as humanly possible, and we would love for you to help us get there.</p>
    
   </div>
 
@@ -430,6 +431,20 @@
     <h2>Changelog</h2>
 
     <details open>
+      <summary><span class="ver">2.3.0</span> Major VCF overhaul</summary>
+      <ul>
+        <li>4x oversampling (cascaded 2x polyphase stages) for clean self-oscillation up to 20 kHz</li>
+        <li>Runtime-selectable 2x/4x oversampling via settings menu</li>
+        <li>Empirical frequency compensation applied post-warp, sample-rate independent</li>
+        <li>Describing function tuned for &plusmn;20 cent self-oscillation pitch tracking</li>
+        <li>Filters run continuously (no reset on note-on, matches real hardware)</li>
+        <li>Per-voice VCF cutoff variance re-enabled (&plusmn;5%)</li>
+        <li>Standalone app icon</li>
+        <li>New: tools/vcf-analyze standalone filter analysis tool</li>
+      </ul>
+    </details>
+
+    <details>
       <summary><span class="ver">2.2.3</span> Spectrum analyzer, UI improvements, Chorus fix</summary>
       <ul>
         <li>Spectrum analyzer scope mode (1024-point FFT, log frequency scale)</li>

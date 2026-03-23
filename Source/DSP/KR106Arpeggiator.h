@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <vector>
 
 // KR-106 arpeggiator
@@ -66,6 +67,7 @@ struct Arpeggiator
   int mDirection = 1;  // 1=ascending, -1=descending (for Up/Down)
   float mPhase = 0.f;
   int mLastNote = -1;  // currently sounding arp note
+  std::atomic<uint32_t> mTickCount{0}; // incremented each arp step (UI can poll)
 
   void SetSampleRate(float sr) { mSampleRate = sr; }
 
@@ -215,6 +217,7 @@ struct Arpeggiator
       if (mPhase >= 1.f)
       {
         mPhase -= 1.f;
+        mTickCount.fetch_add(1, std::memory_order_relaxed);
 
         // Release previous arp note
         if (mLastNote >= 0)

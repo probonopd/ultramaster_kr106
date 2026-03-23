@@ -12,6 +12,7 @@
 #include "Controls/KR106Tooltip.h"
 #include "Controls/KR106PresetDisplay.h"
 #include "Controls/KR106MenuSheet.h"
+#include "Controls/KR106VarianceSheet.h"
 
 class KR106Editor : public juce::AudioProcessorEditor,
                     private juce::Timer
@@ -52,4 +53,7 @@ private:
 
     juce::Typeface::Ptr mMenuTypeface;
     std::unique_ptr<KR106MenuSheet> mSettingsMenu;
+    std::unique_ptr<KR106VarianceSheet> mVarianceSheet;
+
+    void showVarianceSheet();
 };

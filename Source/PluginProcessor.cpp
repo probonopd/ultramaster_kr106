@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "KR106_Presets_JUCE.h"
+#include "DSP/KR106_HPF.h"
 
 // Debug logging to ~/Library/Application Support/KR106/debug.log
 #define KR106_DEBUG 1
@@ -19,7 +20,9 @@ static bool isLivePerformanceParam(int idx)
   return idx == kTuning || idx == kTranspose || idx == kHold ||
          idx == kArpeggio || idx == kArpRate || idx == kArpMode || idx == kArpRange ||
          idx == kPortaMode || idx == kPortaRate || idx == kTransposeOffset ||
-         idx == kMasterVol || idx == kBender || idx == kPower;
+         idx == kMasterVol || idx == kBender || idx == kBenderDco || idx == kBenderVcf ||
+         idx == kBenderLfo || idx == kPower ||
+         idx == kAdsrMode;
 }
 
 static bool sExcludeMask[kNumParams] = {};
@@ -169,22 +172,19 @@ KR106AudioProcessor::KR106AudioProcessor()
     return ms;
   };
 
-  SFV fmtVcfHz = [this](float v, int) {
-    float hz;
-    if (mDSP.mAdsrMode == 0)
-      hz = kr106::j6_vcf_freq_from_slider(v);
-    else
-      hz = kr106::dacToHz(static_cast<uint16_t>(v * 0x3F80));
+  auto vcfHzFromSlider = [this](float v) -> float {
+    if (mDSP.mAdsrMode == 0 && mJ6ClassicVcf)
+      return kr106::j6_vcf_freq_from_slider(v);
+    return kr106::dacToHz(static_cast<uint16_t>(v * 0x3F80));
+  };
+  SFV fmtVcfHz = [this, vcfHzFromSlider](float v, int) {
+    float hz = vcfHzFromSlider(v);
     if (hz >= 1000.f) return juce::String(hz / 1000.f, 1) + " kHz";
     return juce::String(hz, 1) + " Hz";
   };
-  VFS parseVcfHz = [this, bsearch, parseHz](const juce::String& text) -> float {
+  VFS parseVcfHz = [this, bsearch, parseHz, vcfHzFromSlider](const juce::String& text) -> float {
     float hz = juce::jlimit(1.f, 20000.f, parseHz(text));
-    return bsearch([this](float v) {
-      return (mDSP.mAdsrMode == 0)
-          ? kr106::j6_vcf_freq_from_slider(v)
-          : kr106::dacToHz(static_cast<uint16_t>(v * 0x3F80));
-    }, hz);
+    return bsearch([vcfHzFromSlider](float v) { return vcfHzFromSlider(v); }, hz);
   };
   SFV fmtLfoRate = [this](float v, int) {
     float hz = (mDSP.mAdsrMode == 0) ? kr106::LFO::lfoFreqJ6(v)
@@ -331,11 +331,19 @@ KR106AudioProcessor::KR106AudioProcessor()
   addSlider(kDcoNoise,   "DCO Noise",   0.f, 0.f, 1.f, fmtPct, parsePct);
 
   // HPF (4-position switch)
-  SFI fmtHpf = [](int v, int) -> juce::String {
+  SFV fmtHpf = [this](float v, int) -> juce::String {
+    if (mDSP.mAdsrMode == 0)
+    {
+      // J6: continuous HPF via PCHIP curve
+      float hz = getJuno6HPFFreqPCHIP(v / 3.f);
+      if (hz >= 1000.f) return juce::String(hz / 1000.f, 1) + " kHz";
+      return juce::String(hz, 0) + " Hz";
+    }
+    // J106: 4-position switch
     constexpr const char* labels[] = { "Bass Boost", "Flat", "240 Hz", "720 Hz" };
-    return labels[juce::jlimit(0, 3, v)];
+    return juce::String(labels[juce::jlimit(0, 3, juce::roundToInt(v))]);
   };
-  addSwitch(kHpfFreq,    "HPF",         1, 0, 3, fmtHpf);
+  addSlider(kHpfFreq,    "HPF",         1.f, 0.f, 3.f, fmtHpf);
 
   // VCF
   addSlider(kVcfFreq,    "VCF Freq",    1.f,  0.f, 1.f, fmtVcfHz, parseVcfHz);
@@ -876,6 +884,62 @@ void KR106AudioProcessor::parameterChanged(int paramIdx, float newValue)
     }
     mDSP.SetParam(paramIdx, static_cast<double>(newValue));
 
+    // Remap VCF and HPF sliders when switching modes (frequency-matched)
+    if (paramIdx == kAdsrMode)
+    {
+      // VCF freq: only remap when Classic VCF Frq Scale is on,
+      // since otherwise both modes use dacToHz and share the same curve.
+      if (mJ6ClassicVcf)
+      {
+        float vcfSlider = mParams[kVcfFreq]->getValue(); // normalized 0–1
+        // Get current frequency from the source mode's curve
+        float srcHz;
+        if (newValue > 0.5f)
+          srcHz = kr106::j6_vcf_freq_from_slider(vcfSlider);  // was J6, get J6 freq
+        else
+          srcHz = kr106::dacToHz(static_cast<uint16_t>(vcfSlider * 0x3F80)); // was J106
+
+        // Binary search for slider position on the target mode's curve
+        auto targetFn = (newValue > 0.5f)
+          ? std::function<float(float)>([](float v) { return kr106::dacToHz(static_cast<uint16_t>(v * 0x3F80)); })
+          : std::function<float(float)>([](float v) { return kr106::j6_vcf_freq_from_slider(v); });
+        float lo = 0.f, hi = 1.f;
+        for (int i = 0; i < 32; i++)
+        {
+          float mid = (lo + hi) * 0.5f;
+          if (targetFn(mid) < srcHz) lo = mid; else hi = mid;
+        }
+        float newSlider = (lo + hi) * 0.5f;
+        mParams[kVcfFreq]->setValueNotifyingHost(newSlider);
+      }
+
+      float hpfDenorm = mParams[kHpfFreq]->convertFrom0to1(mParams[kHpfFreq]->getValue()); // 0–3
+      if (newValue > 0.5f)
+      {
+        // J6 → J106: find closest J106 position by frequency
+        // J6 has no bass boost, so map to Flat (1) as minimum
+        float j6Hz = getJuno6HPFFreqPCHIP(hpfDenorm / 3.f);
+        static constexpr float kJ106Hz[] = { 0.f, 0.f, 240.f, 720.f };
+        int best = 1; // Flat
+        float bestDist = j6Hz; // distance from 0 Hz (flat)
+        for (int i = 2; i <= 3; i++)
+        {
+          float d = std::abs(j6Hz - kJ106Hz[i]);
+          if (d < bestDist) { bestDist = d; best = i; }
+        }
+        mParams[kHpfFreq]->setValueNotifyingHost(static_cast<float>(best) / 3.f);
+      }
+      else
+      {
+        // J106 → J6: map integer positions to matching J6 slider values
+        // 0,1 → 0; 2 (240Hz) → 0.228 norm; 3 (720Hz) → 0.734 norm
+        static constexpr float kJ106toJ6norm[] = { 0.f, 0.f, 0.228f, 0.734f };
+        int iv = juce::roundToInt(hpfDenorm);
+        if (iv >= 0 && iv <= 3)
+          mParams[kHpfFreq]->setValueNotifyingHost(kJ106toJ6norm[iv]);
+      }
+    }
+
     // Keep kChorusOff in sync: clear it when either chorus is engaged
     if ((paramIdx == kChorusI || paramIdx == kChorusII) && newValue > 0.5f)
     {
@@ -1084,11 +1148,30 @@ void KR106AudioProcessor::loadGlobalSettings()
   mArpLimitKbd = (bool)arpLimit;
   mDSP.mArp.mLimitToKeyboard = mArpLimitKbd;
 
+  auto monoRetrig = KR106PresetManager::getSetting("monoRetrigger", true);
+  mMonoRetrigger = (bool)monoRetrig;
+  mDSP.mMonoRetrigger = mMonoRetrigger;
+
+  auto j6vcf = KR106PresetManager::getSetting("j6ClassicVcf", false);
+  mJ6ClassicVcf = (bool)j6vcf;
+  mDSP.SetJ6ClassicVcf(mJ6ClassicVcf);
+
   auto vcfOS = KR106PresetManager::getSetting("vcfOversample", 4);
   mVcfOversample = ((int)vcfOS == 2) ? 2 : 4;
   mDSP.ForEachVoice([this](kr106::Voice<float>& v) {
     v.mVCF.SetOversample(mVcfOversample);
   });
+
+  // Load per-voice variance values (if saved)
+  auto variance = KR106PresetManager::getSetting("voiceVariance");
+  if (variance.isArray())
+  {
+    auto* arr = variance.getArray();
+    int idx = 0;
+    for (int v = 0; v < 10 && idx < arr->size(); v++)
+      for (int p = 0; p < 6 && idx < arr->size(); p++, idx++)
+        mDSP.GetVoice(v)->SetVariance(p, static_cast<float>((double)(*arr)[idx]));
+  }
 }
 
 void KR106AudioProcessor::saveGlobalSettings()
@@ -1097,7 +1180,16 @@ void KR106AudioProcessor::saveGlobalSettings()
   KR106PresetManager::saveSetting("voiceCount", mVoiceCount);
   KR106PresetManager::saveSetting("ignoreVelocity", mIgnoreVelocity);
   KR106PresetManager::saveSetting("arpLimitKbd", mArpLimitKbd);
+  KR106PresetManager::saveSetting("monoRetrigger", mMonoRetrigger);
+  KR106PresetManager::saveSetting("j6ClassicVcf", mJ6ClassicVcf);
   KR106PresetManager::saveSetting("vcfOversample", mVcfOversample);
+
+  // Save per-voice variance as flat array [v0p0, v0p1, ..., v9p5]
+  juce::Array<juce::var> varArr;
+  for (int v = 0; v < 10; v++)
+    for (int p = 0; p < 6; p++)
+      varArr.add(static_cast<double>(mDSP.GetVoice(v)->GetVariance(p)));
+  KR106PresetManager::saveSetting("voiceVariance", varArr);
 }
 
 juce::AudioProcessorEditor* KR106AudioProcessor::createEditor()

@@ -56,6 +56,7 @@ target_sources(KR106 PRIVATE
     Source/Controls/KR106Slider.h
     Source/Controls/KR106Switch.h
     Source/Controls/KR106Tooltip.h
+    Source/Controls/KR106VarianceSheet.h
     Source/DSP/KR106ADSR.h
     Source/DSP/KR106Arpeggiator.h
     Source/DSP/KR106Chorus.h
@@ -67,6 +68,7 @@ target_sources(KR106 PRIVATE
     Source/DSP/KR106Voice.h
     Source/DSP/KR106_DSP.h
     Source/DSP/KR106_DSP_SetParam.h
+    Source/DSP/KR106_HPF.h
 )
 
 target_include_directories(KR106 PRIVATE
@@ -92,3 +94,12 @@ clap_juce_extensions_plugin(TARGET KR106
     CLAP_ID "org.kayrock.kr106"
     CLAP_FEATURES instrument synthesizer analog
 )
+
+# macOS: replace JUCE's auto-generated icon with our custom .icns (rounded corners + transparency)
+if(APPLE)
+    set(CUSTOM_ICNS "${CMAKE_CURRENT_SOURCE_DIR}/resources/img/KR106.icns")
+    add_custom_command(TARGET KR106_Standalone POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${CUSTOM_ICNS}"
+            "$<TARGET_BUNDLE_DIR:KR106_Standalone>/Contents/Resources/Icon.icns"
+    )
+endif()

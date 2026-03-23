@@ -42,10 +42,46 @@ struct LFO
 
   float lfoFreq(float t) { return mJ6Mode ? lfoFreqJ6(t) : lfoFreqJ106(t); }
 
-  // FIXME(kr106) Measure LFO frq compared to slider voltage on hardware Juno 6
-  static float lfoFreqJ6(float t) {
-    // linear mapping from our original 2001 codebase
-    return ( ( 18.f + t * 1182.f ) / 60.f );
+  // LFO rate comparison (Hz) at slider positions 0–10:
+  //
+  //   slider   1982      1984
+  //   ------   ------    ------
+  //     0      0.14      0.04
+  //     1      0.27      1.07
+  //     2      0.47      1.99
+  //     3      0.78      2.91
+  //     4      1.28      3.84
+  //     5      2.04      4.76
+  //     6      3.23      6.26
+  //     7      5.07      7.73
+  //     8      7.93     10.95
+  //     9     12.55     18.67
+  //    10     21.11     29.76
+  //
+  // 1982: A-taper pot (logarithmic feel), 0.14–21 Hz
+  // 1984: firmware ROM table (piecewise linear), 0.04–30 Hz
+
+  // Juno-6 LFO rate: slider [0,1] → frequency (Hz)
+  // Derived from TA75558S integrator + Schmitt trigger circuit model
+  // VR2 50K(A), R24 4.7K, R25 330Ω, R32 150K, C6 0.1µF, R78/R19 = 33K/47K
+  static float lfoFreqJ6(float slider) {
+    static constexpr float kR24 = 4700.f;
+    static constexpr float kR25 = 330.f;
+    static constexpr float kR32 = 150000.f;
+    static constexpr float kVR2 = 50000.f;
+    static constexpr float kC6  = 1e-7f;
+    static constexpr float kVsat = 13.5f;
+    static constexpr float kBeta = 33000.f / 47000.f;  // R78/R19
+    static constexpr float k4VthC6R32 = 4.f * kVsat * kBeta * kC6 * kR32;
+
+    float s = std::clamp(slider, 0.f, 1.f);
+    float alpha = (std::pow(10.f, 2.f * s) - 1.f) / 99.f;
+
+    float R_up = (1.f - alpha) * kVR2 + kR24;
+    float R_dn = alpha * kVR2 + kR25;
+
+    float Vw = kVsat / (R_up * (1.f/R_up + 1.f/R_dn + 1.f/kR32));
+    return Vw / k4VthC6R32;
   }
 
   // Maps normalized slider 0..1 to LFO frequency in Hz.

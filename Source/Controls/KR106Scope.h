@@ -65,6 +65,21 @@ public:
         setMouseCursor(juce::MouseCursor::PointingHandCursor);
     }
 
+    void mouseMove(const juce::MouseEvent& e) override
+    {
+        if (mScaleIdx == 4)
+        {
+            int prev = mPatchBankHover;
+            mPatchBankHover = patchIndexAt(e.x, e.y);
+            if (mPatchBankHover != prev) repaint();
+        }
+    }
+
+    void mouseExit(const juce::MouseEvent&) override
+    {
+        if (mPatchBankHover >= 0) { mPatchBankHover = -1; repaint(); }
+    }
+
     void paint(juce::Graphics& g) override
     {
         int w = getWidth();
@@ -84,16 +99,105 @@ public:
             case 1: paintSpectrum(g, w, h, dim, mid, bright); break;
             case 2: paintADSR(g, w, h, dim, mid, bright); break;
             case 3: paintVCF(g, w, h, dim, mid, bright); break;
+            case 4: paintPatchBank(g, w, h, dim, mid, bright); break;
             default: paintAbout(g, w, h, dim, mid, bright); break;
         }
     }
 
-    void mouseDown(const juce::MouseEvent&) override { cycleMode(1); }
+    void mouseDown(const juce::MouseEvent& e) override
+    {
+        if (mScaleIdx == 4 && mProcessor)
+        {
+            if (mBallActive)
+            {
+                mBallActive = false;
+                repaint();
+                return;
+            }
+            int idx = patchIndexAt(e.x, e.y);
+            if (idx < 0) return;
+
+            // Select patch and start drag
+            mProcessor->setCurrentProgram(idx);
+            mDragOriginX = (idx % 16) * (getWidth() / 16) + (getWidth() / 32);
+            mDragOriginY = (idx / 16) * (getHeight() / 8) + (getHeight() / 16);
+            mDragEndX = e.x;
+            mDragEndY = e.y;
+            mDragging = true;
+            repaint();
+            if (auto* parent = getParentComponent())
+                parent->repaint();
+            return;
+        }
+        cycleMode(1);
+    }
+
+    void mouseDrag(const juce::MouseEvent& e) override
+    {
+        if (mScaleIdx == 4 && mDragging)
+        {
+            mDragEndX = std::clamp(e.x, 0, getWidth() - 1);
+            mDragEndY = std::clamp(e.y, 0, getHeight() - 1);
+            repaint();
+        }
+    }
+
+    void mouseUp(const juce::MouseEvent& e) override
+    {
+        if (mScaleIdx == 4 && mDragging)
+        {
+            mDragging = false;
+
+            // Only launch if mouse released outside the origin cell
+            int releaseIdx = patchIndexAt(mDragEndX, mDragEndY);
+            int originIdx = patchIndexAt(mDragOriginX, mDragOriginY);
+            float dx = static_cast<float>(mDragEndX - mDragOriginX);
+            float dy = static_cast<float>(mDragEndY - mDragOriginY);
+            float mag = std::sqrt(dx * dx + dy * dy);
+
+            if (releaseIdx != originIdx && mag > 1.f)
+            {
+                // Quadratic curve: short drags = very slow, long drags = fast
+                float norm = std::min(mag / 80.f, 1.f);
+                mBallSpeed = norm * norm * 0.45f;
+                mBallAccum = 0.f;
+                mBallErrX = 0.f;
+                mBallErrY = 0.f;
+                mBallCellX = originIdx % 16;
+                mBallCellY = originIdx / 16;
+                // Direction opposite to drag (pool cue)
+                mBallDX = -dx / mag;
+                mBallDY = -dy / mag;
+                mBallActive = true;
+            }
+            repaint();
+        }
+    }
 
     void cycleMode(int delta)
     {
         mAboutActive = false;
-        mScaleIdx = ((mScaleIdx + delta) % 5 + 5) % 5;
+        // Skip patch bank (mode 4) when cycling — only accessible via P key
+        int n = kNumModes;
+        int next = ((mScaleIdx + delta) % n + n) % n;
+        if (next == 4) next = ((next + delta) % n + n) % n;
+        mScaleIdx = next;
+        repaint();
+    }
+
+    void togglePatchBank()
+    {
+        if (mScaleIdx == 4)
+        {
+            mBallActive = false;
+            mScaleIdx = mPrePatchBankMode;
+        }
+        else
+        {
+            mPrePatchBankMode = mScaleIdx;
+            mScaleIdx = 4;
+        }
+        mAboutActive = false;
         repaint();
     }
 
@@ -110,7 +214,8 @@ public:
                          % KR106AudioProcessor::kScopeRingSize;
         if (newSamples == 0)
         {
-            if (mScaleIdx == 4) repaint(); // animate about screen beam
+            if (mScaleIdx == 5) repaint(); // animate about screen beam
+            else if (mScaleIdx == 4) { updateBall(); repaint(); }
             else if (mScaleIdx >= 2) repaintIfParamsChanged();
             return;
         }
@@ -132,6 +237,9 @@ public:
         mLocalReadPos = writePos;
         mSamplesAvail += newSamples;
         if (mSamplesAvail > RING_SIZE) mSamplesAvail = RING_SIZE;
+
+        // Update bouncing ball regardless of audio level
+        if (mScaleIdx == 4) updateBall();
 
         // If audio is silent, clear display
         if (peak < 1e-6f)
@@ -180,6 +288,69 @@ public:
     }
 
 private:
+    void updateBall()
+    {
+        if (!mBallActive || !mProcessor) return;
+
+        // Accumulate speed; step one cell when >= 1.0
+        mBallAccum += mBallSpeed;
+        if (mBallAccum < 1.f) return;
+        mBallAccum -= 1.f;
+
+        // Step one cell — use Bresenham-style error to follow the angle
+        // Decide whether to step X, Y, or both (diagonal)
+        mBallErrX += std::abs(mBallDX);
+        mBallErrY += std::abs(mBallDY);
+
+        int sx = (mBallDX >= 0.f) ? 1 : -1;
+        int sy = (mBallDY >= 0.f) ? 1 : -1;
+        int cx = mBallCellX, cy = mBallCellY;
+
+        if (mBallErrX >= mBallErrY)
+        {
+            cx += sx;
+            mBallErrX -= 1.f;
+            if (mBallErrY >= 0.5f) { cy += sy; mBallErrY -= 1.f; }
+        }
+        else
+        {
+            cy += sy;
+            mBallErrY -= 1.f;
+            if (mBallErrX >= 0.5f) { cx += sx; mBallErrX -= 1.f; }
+        }
+
+        // Bounce off walls
+        if (cx < 0)  { cx = 1;  mBallDX = -mBallDX; }
+        if (cx > 15) { cx = 14; mBallDX = -mBallDX; }
+        if (cy < 0)  { cy = 1;  mBallDY = -mBallDY; }
+        if (cy > 7)  { cy = 6;  mBallDY = -mBallDY; }
+
+        mBallCellX = cx;
+        mBallCellY = cy;
+
+        int cellIdx = cy * 16 + cx;
+        int num = mProcessor->getNumPrograms();
+        if (cellIdx >= 0 && cellIdx < num)
+        {
+            mProcessor->setCurrentProgram(cellIdx);
+            if (auto* parent = getParentComponent())
+                parent->repaint();
+        }
+    }
+
+    int patchIndexAt(int x, int y) const
+    {
+        int cols = 16, rows = 8;
+        int cellW = getWidth() / cols;
+        int cellH = getHeight() / rows;
+        int col = x / cellW;
+        int row = y / cellH;
+        if (col < 0 || col >= cols || row < 0 || row >= rows) return -1;
+        int idx = row * cols + col;
+        int num = mProcessor ? mProcessor->getNumPrograms() : 128;
+        return (idx >= 0 && idx < num) ? idx : -1;
+    }
+
     // ---- Waveform display ----
     void paintWaveform(juce::Graphics& g, int w, int h,
                        juce::Colour /*black*/, juce::Colour dim, juce::Colour mid, juce::Colour bright)
@@ -292,7 +463,7 @@ private:
             {
                 float freq = m * powf(10.f, static_cast<float>(decade));
                 if (freq < 20.f || freq > nyquist) continue;
-                float xf = (log10f(freq) - logMin) / logRange * (w - 1);
+                float xf = std::round((log10f(freq) - logMin) / logRange * (w - 1));
                 if (xf < 0 || xf >= w) continue;
                 if (m == 1)
                     g.fillRect(xf, 0.f, 1.f, static_cast<float>(h)); // full line at decades
@@ -574,15 +745,30 @@ private:
         else
             fc = kr106::j6_vcf_freq_from_slider(slider);
 
-        // Compute resonance k — uses same static functions as VCF::ProcessSample
+        // Compute resonance k — same pipeline as VCF::ProcessSample
         float res = mProcessor->getParam(kVcfRes)->getValue();
         float k = j106 ? kr106::VCF::ResK_J106(res) : kr106::VCF::ResK_J6(res);
 
         float fcSlider = fc; // slider frequency for the marker
 
-        // Apply the same pole-frequency compensation as the DSP
-        if (j106)
-            fc *= kr106::VCF::FreqCompensation(k);
+        // Frequency-dependent resonance attenuation (matches ProcessSample).
+        // In the DSP, frq and mFrqRef are both in the oversampled domain,
+        // so their ratio equals fc_hz / 200. Compute directly in Hz here.
+        float ratio = std::max(fc, 200.f) / 200.f;
+        k *= powf(ratio, -0.09f);
+
+        // Soft-clip k above 3.0
+        if (k > 3.0f)
+        {
+            float excess = k - 3.0f;
+            k = 3.0f + excess / (1.0f + excess * 0.2f);
+        }
+
+        // Clamp max k
+        k = std::min(k, 6.6f);
+
+        // Apply pole-frequency compensation (same as DSP applies to g)
+        fc *= kr106::VCF::FreqCompensation(k);
 
         // Display range
         static constexpr float kMinHz = 5.f;
@@ -602,7 +788,7 @@ private:
             {
                 float freq = m * powf(10.f, static_cast<float>(decade));
                 if (freq < kMinHz || freq > kMaxHz) continue;
-                float xf = (log10f(freq) - logMin) / logRange * (w - 1);
+                float xf = std::round((log10f(freq) - logMin) / logRange * (w - 1));
                 if (xf < 0 || xf >= w) continue;
                 if (m == 1)
                     g.fillRect(xf, 0.f, 1.f, static_cast<float>(h));
@@ -850,6 +1036,59 @@ private:
         traceStr(ver.toRawUTF8(), cx, h * 0.70f, h * 0.10f);
     }
 
+    // ---- Patch bank (128 rectangles in 16×8 grid) ----
+    void paintPatchBank(juce::Graphics& g, int w, int h,
+                        juce::Colour dim, juce::Colour mid, juce::Colour bright)
+    {
+        if (!mProcessor) return;
+
+        int cols = 16, rows = 8;
+        int cellW = w / cols;
+        int cellH = h / rows;
+        int num = mProcessor->getNumPrograms();
+        int cur = mProcessor->getCurrentProgram();
+
+        // Draw grid lines (shifted 0.5px right, 1px down to center in gaps)
+        auto gridCol = juce::Colour(0, 64, 0);
+        g.setColour(gridCol);
+        for (int c = 1; c < cols; c++)
+            g.fillRect(c * cellW - 0.5f, 1.f, 1.f, static_cast<float>(rows * cellH));
+        for (int r = 1; r <= rows; r++)
+            g.fillRect(0.f, static_cast<float>(r * cellH), static_cast<float>(cols * cellW), 1.f);
+
+        // Fill selected and hovered cells
+        for (int r = 0; r < rows; r++)
+        {
+            for (int c = 0; c < cols; c++)
+            {
+                int idx = r * cols + c;
+                if (idx >= num) break;
+
+                int x = c * cellW;
+                int y = r * cellH;
+
+                if (idx == cur)
+                {
+                    g.setColour(bright);
+                    g.fillRect(x, y, cellW - 1, cellH - 1);
+                }
+            }
+        }
+
+        // Draw drag vector (pull-back cue style)
+        if (mDragging)
+        {
+            float ox = static_cast<float>(mDragOriginX);
+            float oy = static_cast<float>(mDragOriginY);
+            float mx = static_cast<float>(mDragEndX);
+            float my = static_cast<float>(mDragEndY);
+
+            // Dim line: origin to mouse (the pull-back)
+            g.setColour(bright);
+            g.drawLine(ox, oy, mx, my, 1.f);
+        }
+    }
+
     // ---- About / version display (oscilloscope beam trace with phosphor decay) ----
     void paintAbout(juce::Graphics& g, int w, int h,
                     juce::Colour dim, juce::Colour /*mid*/, juce::Colour /*bright*/)
@@ -902,7 +1141,23 @@ private:
         }
     }
 
-    int mScaleIdx = 0; // 0: waveform, 1: spectrum, 2: ADSR, 3: VCF, 4: about
+    static constexpr int kNumModes = 6; // 0: waveform, 1: spectrum, 2: ADSR, 3: VCF, 4: patch bank, 5: about
+    int mScaleIdx = 0;
+    int mPrePatchBankMode = 0; // mode to return to when toggling patch bank off
+    int mPatchBankHover = -1;  // hovered patch index, or -1
+
+    // Bouncing ball state
+    bool  mBallActive = false;
+    int   mBallCellX = 0, mBallCellY = 0; // current cell position
+    float mBallDX = 0.f, mBallDY = 0.f;   // direction (for Bresenham + bounce)
+    float mBallSpeed = 0.f;                // cells per tick
+    float mBallAccum = 0.f;                // fractional step accumulator
+    float mBallErrX = 0.f, mBallErrY = 0.f; // Bresenham error terms
+
+    // Drag-to-launch state
+    bool mDragging = false;
+    int  mDragOriginX = 0, mDragOriginY = 0; // center of clicked cell (pixels)
+    int  mDragEndX = 0, mDragEndY = 0;       // current mouse position (pixels)
 
     KR106AudioProcessor* mProcessor = nullptr;
 

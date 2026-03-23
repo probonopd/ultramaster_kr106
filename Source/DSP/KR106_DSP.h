@@ -15,6 +15,7 @@
 #include "KR106VcfFreqJ6.h"
 #include "KR106Arpeggiator.h"
 #include "KR106Chorus.h"
+#include "KR106_HPF.h"
 
 // Top-level KR-106 DSP orchestrator
 
@@ -44,7 +45,8 @@ struct HPF
   static constexpr float kHPFFreqs[4] = { 0.f, 0.f, 240.f, 720.f };
   static constexpr float kDCBlockHz = 5.f; // DC blocker cutoff for modes 0 & 1
 
-  int   mMode = 1;
+  int   mMode = 1;          // -1 = continuous (J6), 0-3 = switched (J106)
+  float mContinuousHz = 0.f; // J6 continuous cutoff
   float mSampleRate = 44100.f;
   float mG   = 0.f;
   float mHpS = 0.f;
@@ -60,6 +62,15 @@ struct HPF
     int newMode = std::clamp(mode, 0, 3);
     if (newMode == mMode) return;
     mMode = newMode;
+    mContinuousHz = 0.f;
+    Recalc();
+  }
+
+  // J6 continuous mode: set HPF cutoff directly in Hz
+  void SetFreqHz(float hz)
+  {
+    mMode = -1; // continuous mode (not a 4-position switch)
+    mContinuousHz = hz;
     Recalc();
   }
 
@@ -69,6 +80,13 @@ struct HPF
     float dcFrq = std::clamp(kDCBlockHz / (mSampleRate * 0.5f), 0.001f, 0.9f);
     mDcG = tanf(dcFrq * static_cast<float>(M_PI) * 0.5f);
 
+    if (mMode == -1)
+    {
+      // J6 continuous mode
+      float frq = std::clamp(mContinuousHz / (mSampleRate * 0.5f), 0.001f, 0.9f);
+      mG = tanf(frq * static_cast<float>(M_PI) * 0.5f);
+      return;
+    }
     if (mMode == 1) { mG = 0.f; return; }
     float fc = (mMode == 0) ? kShelfFreqHz : kHPFFreqs[mMode];
     float frq = std::clamp(fc / (mSampleRate * 0.5f), 0.001f, 0.9f);
@@ -86,13 +104,26 @@ struct HPF
 
   float Process(float input)
   {
-    if (mMode == 1) return DCBlock(input);
+    // DC blocker disabled: oscillators are bipolar with no DC offset,
+    // and the hardware's NP 10µF/16V coupling cap between DCO and VCF
+    // is implicitly modeled by the absence of DC bias. The VCF's OTA
+    // stages could theoretically generate trace DC from asymmetric
+    // saturation, but it's inaudible and not worth the cost.
+    if (mMode == -1)
+    {
+      // J6 continuous HPF: 1-pole high-pass
+      float v = (input - mHpS) * mG / (1.f + mG);
+      float lp = mHpS + v;
+      mHpS = lp + v;
+      return input - lp;
+    }
+    if (mMode == 1) return input; // was: DCBlock(input)
     if (mMode == 0)
     {
       float v = (input - mLpS) * mG / (1.f + mG);
       float lp = mLpS + v;
       mLpS = lp + v;
-      return DCBlock(input + (kShelfGainLin - 1.f) * lp);
+      return input + (kShelfGainLin - 1.f) * lp; // was: DCBlock(...)
     }
     float v = (input - mHpS) * mG / (1.f + mG);
     float lp = mHpS + v;
@@ -229,7 +260,7 @@ public:
         mUnisonStack.push_back(note);
         bool wasPlaying = (mUnisonNote >= 0);
         mUnisonNote = note;
-        if (wasPlaying)
+        if (wasPlaying && !mMonoRetrigger)
           GlideUnisonVoices(note);
         else
           TriggerUnisonVoices(note, velocity);
@@ -528,6 +559,14 @@ public:
   std::vector<int> mUnisonStack;
   int mActiveVoices = 6;
   bool mIgnoreVelocity = true;
+  bool mMonoRetrigger = true;
+  bool mJ6ClassicVcf = false;
+
+  void SetJ6ClassicVcf(bool classic)
+  {
+    mJ6ClassicVcf = classic;
+    ForEachVoice([classic](kr106::Voice<T>& v) { v.mJ6ClassicVcf = classic; });
+  }
   int mVoiceNote[kMaxVoices] = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1};
   int64_t mVoiceAge[kMaxVoices] = {};
   int64_t mVoiceAgeCounter = 0;
@@ -547,6 +586,7 @@ public:
   float mSliderVcfEnv = 0.f;
   float mSliderVcfKbd = 0.f;
   float mSliderBenderVcf = 0.f;
+  float mSliderHpf = 1.f; // default = "Flat" (mode 1 = value 1.0)
 
   // --- Filter test mode (toggled by '0' key) ---
   std::atomic<bool> mFilterTestTrigger{false}; // UI thread sets true to start

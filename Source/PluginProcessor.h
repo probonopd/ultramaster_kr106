@@ -65,6 +65,8 @@ public:
   int mVoiceCount = 6;   // persisted per instance (6/8/10)
   bool mIgnoreVelocity = true; // persisted per instance
   bool mArpLimitKbd = true;    // persisted per instance
+  bool mMonoRetrigger = true;  // persisted per instance
+  bool mJ6ClassicVcf = false;  // persisted per instance (true = authentic J6 VCF)
   int mVcfOversample = 4;      // persisted per instance (2 or 4)
   bool mInitialDefault = true; // shows "Default" until first preset change
 

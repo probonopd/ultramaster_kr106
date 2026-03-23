@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="favicon.ico">
 <title>Ultramaster KR-106 — User's Guide</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Oswald:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
@@ -223,11 +224,12 @@
     <p class="subtitle">User's Guide</p>
   </header>
 
-  <img src="screenshot.png" alt="KR-106 interface" class="screenshot">
-
   <!-- ============================================================ -->
   <details>
-  <summary><h2>Controls</h2></summary>
+  <summary style="flex-wrap: wrap;">
+    <h2>Controls</h2>
+    <img src="screenshot.png" alt="KR-106 interface" class="screenshot" style="margin-top: 0.8rem; pointer-events: none; flex-basis: 100%;">
+  </summary>
 
   <div class="controls">
 
@@ -361,9 +363,12 @@
 
   <!-- ============================================================ -->
   <details>
-  <summary><h2>Scope</h2></summary>
+  <summary style="flex-wrap: wrap;">
+    <h2>Scope</h2>
+    <img src="scope.png" alt="Scope display modes" class="screenshot" style="margin-top: 0.8rem; pointer-events: none; flex-basis: 100%;">
+  </summary>
 
-  <p>The oscilloscope in the upper right. Click to cycle through five display modes:</p>
+  <p>The oscilloscope in the upper right. Left-click or right-click to cycle forward or backward through five display modes:</p>
   <ul>
     <li><strong>Waveform</strong> Triggered oscilloscope showing the raw audio output.</li>
     <li><strong>Spectrum</strong> Frequency spectrum analyzer (logarithmic).</li>
@@ -375,7 +380,10 @@
 
   <!-- ============================================================ -->
   <details>
-  <summary><h2>Presets</h2></summary>
+  <summary style="flex-wrap: wrap;">
+    <h2>Patch Bank</h2>
+    <img src="presets.png" alt="Patch Bank" class="screenshot" style="margin-top: 0.8rem; pointer-events: none; flex-basis: 100%;">
+  </summary>
 
   <p>The KR-106 includes 128 factory presets derived from original Juno-106 patch data. The current preset name is shown below the scope.</p>
 
@@ -405,7 +413,10 @@
 
   <!-- ============================================================ -->
   <details>
-  <summary><h2>Settings</h2></summary>
+  <summary style="flex-wrap: wrap;">
+    <h2>Settings</h2>
+    <img src="settings.png" alt="Settings" class="screenshot" style="margin-top: 0.8rem; pointer-events: none; flex-basis: 100%;">
+  </summary>
 
   <p>Click the gear icon or right-click anywhere on the panel background to access these options:</p>
   <ul>
@@ -413,6 +424,7 @@
     <li><strong>6 / 8 / 10 Voices</strong> Maximum polyphony. More voices use more CPU.</li>
     <li><strong>Ignore MIDI Velocity</strong> All notes play at full velocity, like the original hardware.</li>
     <li><strong>Limit Arp to Keyboard Range</strong> Arpeggio wraps notes back into the 61-key range instead of extending beyond it.</li>
+    <li><strong>VCF Oversample 2x / 4x</strong> Filter oversampling factor. 4x (default) gives clean self-oscillation tracking up to 20 kHz. 2x uses less CPU but may alias at high cutoff + high resonance.</li>
   </ul>
   </details>
 

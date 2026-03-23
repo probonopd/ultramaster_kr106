@@ -107,7 +107,7 @@ KR106Editor::KR106Editor(KR106AudioProcessor& p)
     add(new KR106Slider(param(kDcoNoise), tip, sliderHdl), 448, 33, 13, 49);
 
     // === HPF SECTION ===
-    add(new KR106Slider(param(kHpfFreq), tip, sliderHdl),   473, 33, 13, 49);
+    add(new KR106HPFSlider(param(kHpfFreq), tip, sliderHdl, &p.mDSP.mAdsrMode), 471, 33, 17, 49);
 
     // === VCF SECTION ===
     add(new KR106Slider(param(kVcfFreq), tip, sliderHdl),          496, 33, 13, 49);
@@ -196,16 +196,20 @@ void KR106Editor::showSettingsMenu()
     items.push_back(KR106MenuItem::item(2,  "150%", true, mUIScale == 1.5f));
     items.push_back(KR106MenuItem::item(3,  "200%", true, mUIScale == 2.f));
     items.push_back(KR106MenuItem::sep());
-    items.push_back(KR106MenuItem::item(10, "6 Voices",  true, vc == 6));
-    items.push_back(KR106MenuItem::item(11, "8 Voices",  true, vc == 8));
+    items.push_back(KR106MenuItem::item(10, "06 Voices",  true, vc == 6));
+    items.push_back(KR106MenuItem::item(11, "08 Voices",  true, vc == 8));
     items.push_back(KR106MenuItem::item(12, "10 Voices", true, vc == 10));
     items.push_back(KR106MenuItem::sep());
     items.push_back(KR106MenuItem::item(20, "Ignore MIDI Velocity",      true, mProcessor.mIgnoreVelocity));
     items.push_back(KR106MenuItem::item(21, "Limit Arp to Kbd Range", true, mProcessor.mArpLimitKbd));
+    items.push_back(KR106MenuItem::item(22, "Mono Retrigger",        true, mProcessor.mMonoRetrigger));
+    items.push_back(KR106MenuItem::item(23, "Classic VCF Frq Scale", true, mProcessor.mJ6ClassicVcf));
     items.push_back(KR106MenuItem::sep());
     int os = mProcessor.mVcfOversample;
     items.push_back(KR106MenuItem::item(30, "VCF Oversample 2x", true, os == 2));
     items.push_back(KR106MenuItem::item(31, "VCF Oversample 4x", true, os == 4));
+    items.push_back(KR106MenuItem::sep());
+    items.push_back(KR106MenuItem::item(40, "Component Variance Editor"));
 
     mSettingsMenu = std::make_unique<KR106MenuSheet>(std::move(items), mMenuTypeface,
         [this](int r)
@@ -238,6 +242,16 @@ void KR106Editor::showSettingsMenu()
                 mProcessor.mArpLimitKbd = !mProcessor.mArpLimitKbd;
                 mProcessor.mDSP.mArp.mLimitToKeyboard = mProcessor.mArpLimitKbd;
             }
+            if (r == 22)
+            {
+                mProcessor.mMonoRetrigger = !mProcessor.mMonoRetrigger;
+                mProcessor.mDSP.mMonoRetrigger = mProcessor.mMonoRetrigger;
+            }
+            if (r == 23)
+            {
+                mProcessor.mJ6ClassicVcf = !mProcessor.mJ6ClassicVcf;
+                mProcessor.mDSP.SetJ6ClassicVcf(mProcessor.mJ6ClassicVcf);
+            }
             int newOS = r == 30 ? 2 : r == 31 ? 4 : 0;
             if (newOS > 0 && newOS != mProcessor.mVcfOversample)
             {
@@ -246,6 +260,8 @@ void KR106Editor::showSettingsMenu()
                     v.mVCF.SetOversample(newOS);
                 });
             }
+            if (r == 40)
+                showVarianceSheet();
             mProcessor.saveGlobalSettings();
         });
 
@@ -256,6 +272,26 @@ void KR106Editor::showSettingsMenu()
 
     addAndMakeVisible(mSettingsMenu.get());
     mSettingsMenu->showAt({ menuX, menuY, menuW, menuH });
+}
+
+void KR106Editor::showVarianceSheet()
+{
+    if (mVarianceSheet) return;
+
+    mVarianceSheet = std::make_unique<KR106VarianceSheet>(&mProcessor, mMenuTypeface,
+        [this]()
+        {
+            mVarianceSheet.reset();
+            mProcessor.saveGlobalSettings();
+        });
+
+    int sheetW = mVarianceSheet->calcWidth();
+    int sheetH = mVarianceSheet->calcHeight();
+    int sheetX = (getWidth() - sheetW) / 2;
+    int sheetY = (getHeight() - sheetH) / 2;
+
+    addAndMakeVisible(mVarianceSheet.get());
+    mVarianceSheet->showAt({ sheetX, sheetY, sheetW, sheetH });
 }
 
 int KR106Editor::qwertyToNote(int keyCode) const
@@ -323,6 +359,9 @@ bool KR106Editor::keyPressed(const juce::KeyPress& key)
 
     // Enter: open preset sheet
     if (key == juce::KeyPress::returnKey) { mPresetDisplay->openPresetSheet(); return true; }
+
+    // P: toggle patch bank view
+    if (code == 'P') { mScope->togglePatchBank(); return true; }
 
     // Z/X: octave shift
     if (code == 'Z') { mQwertyBase = juce::jmax(0, mQwertyBase - 12);  qwertyAllNotesOff(); return true; }

@@ -242,7 +242,10 @@ private:
     return 0; // continuous
   }
 
+protected:
   juce::RangedAudioParameter* mParam = nullptr;
+
+private:
   KR106Tooltip* mTooltip = nullptr;
   juce::Image mHandleImg;
   std::unique_ptr<juce::TextEditor> mEditor;
@@ -251,4 +254,78 @@ private:
   float mLastRawDY = 0.f;
   bool mDragging = false;
   bool mRightDrag = false;
+};
+
+// HPF slider: draws tick marks, snaps to 4 positions in J106 mode.
+// In J6 mode (mAdsrMode == 0), behaves as a continuous slider.
+class KR106HPFSlider : public KR106Slider
+{
+public:
+  KR106HPFSlider(juce::RangedAudioParameter* param, KR106Tooltip* tip,
+                 const juce::Image& handleImg, int* adsrMode)
+    : KR106Slider(param, tip, handleImg), mAdsrMode(adsrMode) {}
+
+  void paint(juce::Graphics& g) override
+  {
+    auto bright = juce::Colour(219, 219, 219);
+    auto dim    = juce::Colour(126, 126, 126);
+    if (mAdsrMode && *mAdsrMode == 0)
+    {
+      // J6: 11 tick marks, 1px tall, 13px wide
+      // Lines 0, 5, 10 are bright, others dim
+      for (int i = 0; i <= 10; i++)
+      {
+        float y = std::round(44.f - i * 4.f);
+        g.setColour((i == 0 || i == 5 || i == 10) ? bright : dim);
+        g.fillRect(1.f, y, 15.f, 1.f);
+      }
+    }
+    else
+    {
+      // J106: 4 tick marks at switch positions, bright
+      for (int i = 0; i < 4; i++)
+      {
+        float y = std::round(44.f - i * (40.f / 3.f));
+        g.setColour(bright);
+        g.fillRect(1.f, y, 15.f, 1.f);
+      }
+    }
+    // Offset well+thumb 4px right to center in wider control
+    g.saveState();
+    g.setOrigin(2, 0);
+    KR106Slider::paint(g);
+    g.restoreState();
+  }
+
+  void mouseDrag(const juce::MouseEvent& e) override
+  {
+    KR106Slider::mouseDrag(e);
+    // In J106 mode, snap to 4 positions (0, 1/3, 2/3, 1)
+    if (mAdsrMode && *mAdsrMode != 0 && mParam)
+    {
+      float val = mParam->getValue();
+      float snapped = std::round(val * 3.f) / 3.f;
+      if (snapped != val)
+      {
+        mParam->setValueNotifyingHost(snapped);
+        repaint();
+      }
+    }
+  }
+
+  void mouseUp(const juce::MouseEvent& e) override
+  {
+    // Snap on release too for clean final position
+    if (mAdsrMode && *mAdsrMode != 0 && mParam)
+    {
+      float val = mParam->getValue();
+      float snapped = std::round(val * 3.f) / 3.f;
+      if (snapped != val)
+        mParam->setValueNotifyingHost(snapped);
+    }
+    KR106Slider::mouseUp(e);
+  }
+
+private:
+  int* mAdsrMode = nullptr;
 };

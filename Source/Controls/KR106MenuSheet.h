@@ -14,7 +14,7 @@ namespace KR106Theme
 
     inline juce::Colour bg()        { return juce::Colour(0, 0, 0); }
     inline juce::Colour bright()    { return juce::Colour(0, 255, 0); }
-    inline juce::Colour dim()       { return juce::Colour(0, 140, 0); }
+    inline juce::Colour dim()       { return juce::Colour(0, 160, 0); }
     inline juce::Colour disabled()  { return juce::Colour(0, 60, 0); }
     inline juce::Colour hoverBg()   { return juce::Colour(0, 60, 0); }
     inline juce::Colour grid()      { return juce::Colour(0, 40, 0); }
@@ -30,7 +30,21 @@ namespace KR106Theme
     inline void drawCell(juce::Graphics& g, const juce::String& text,
                          int x, int y, int w, int h, bool hover, bool active)
     {
-        g.setColour((active || hover) ? bright() : dim());
+        if (active)
+        {
+            g.setColour(bright());
+            g.fillRect(x, y, w, h);
+            g.setColour(bg());
+        }
+        else
+        {
+            if (hover)
+            {
+                g.setColour(hoverBg());
+                g.fillRect(x, y, w, h);
+            }
+            g.setColour(bright());
+        }
         g.drawSingleLineText(text, x + 4, y + h - kTextOffset);
     }
 }
