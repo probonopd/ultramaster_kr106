@@ -196,19 +196,36 @@ public:
 
         // Get current preset name
         juce::String name;
+        bool dirty = false;
         if (mProcessor->mInitialDefault)
             name = "Default";
         else
         {
             int idx = mProcessor->getCurrentProgram();
             name = mProcessor->getProgramName(idx).substring(0, 18);
+            dirty = mProcessor->isCurrentPresetDirty();
         }
 
         // Draw preset name left-aligned in green (Segment14 font)
         // Use drawSingleLineText at a fixed baseline to bypass JUCE font metrics
         g.setColour(juce::Colour(0, 220, 0));
-        g.setFont(juce::Font(juce::FontOptions(mTypeface).withMetricsKind(juce::TypefaceMetricsKind::legacy)).withHeight(8.f));
+        auto font = juce::Font(juce::FontOptions(mTypeface).withMetricsKind(juce::TypefaceMetricsKind::legacy)).withHeight(8.f);
+        g.setFont(font);
         g.drawSingleLineText(name, 3, h - 3);
+
+        // Blinking ~ at right edge when preset has been modified
+        // Toggles every 4 repaints (~1Hz at 7.5Hz repaint rate)
+        if (dirty)
+        {
+            mBlinkCounter++;
+            if ((mBlinkCounter / 4) & 1)
+                g.drawSingleLineText(juce::String::charToString(0x005F),
+                                     w - 8, h - 3);
+        }
+        else
+        {
+            mBlinkCounter = 0;
+        }
     }
 
     void openPresetSheet() { showPresetSheet(); }
@@ -406,6 +423,7 @@ private:
 
     KR106AudioProcessor* mProcessor = nullptr;
     juce::Typeface::Ptr mTypeface;
+    int mBlinkCounter = 0;
 
     // Preset sheet overlay
     std::unique_ptr<KR106PresetSheet> mSheet;

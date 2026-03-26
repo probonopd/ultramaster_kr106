@@ -424,36 +424,27 @@ private:
     void paintSpectrum(juce::Graphics& g, int w, int h,
                        juce::Colour dim, juce::Colour mid, juce::Colour bright)
     {
-        static constexpr int kFFTOrder = 12; // 4096-point FFT (~10 Hz resolution)
-        static constexpr int kFFTSize = 1 << kFFTOrder;
+        ensureHannWindow();
 
         // Fill FFT input from ring buffer (most recent samples)
-        float fftData[kFFTSize * 2] = {};
+        memset(mFFTData, 0, sizeof(mFFTData));
         int available = std::min(mSamplesAvail, kFFTSize);
         for (int i = 0; i < available; i++)
         {
             int idx = (mRingWritePos - available + i + RING_SIZE) % RING_SIZE;
-            fftData[i] = mRing[idx];
+            mFFTData[i] = mRing[idx] * mHannWindow[i];
         }
 
-        // Apply Hann window
-        for (int i = 0; i < kFFTSize; i++)
-        {
-            float win = 0.5f * (1.f - cosf(juce::MathConstants<float>::twoPi * i / (kFFTSize - 1)));
-            fftData[i] *= win;
-        }
-
-        // FFT
-        juce::dsp::FFT fft(kFFTOrder);
-        fft.performRealOnlyForwardTransform(fftData);
+        // FFT (using cached FFT object)
+        mFFT.performRealOnlyForwardTransform(mFFTData);
 
         // Compute magnitudes in dB
         int numBins = kFFTSize / 2;
         float magnitudes[kFFTSize / 2];
         for (int i = 0; i < numBins; i++)
         {
-            float re = fftData[i * 2];
-            float im = fftData[i * 2 + 1];
+            float re = mFFTData[i * 2];
+            float im = mFFTData[i * 2 + 1];
             float mag = sqrtf(re * re + im * im) / numBins;
             magnitudes[i] = 20.f * log10f(std::max(mag, 1e-7f));
         }
@@ -1187,6 +1178,22 @@ private:
     int mAboutW = 0, mAboutH = 0;
     float mAboutStartTime = 0.f;
     bool mAboutActive = false;
+
+    // Spectrum analyzer cached state (avoid per-frame allocation)
+    static constexpr int kFFTOrder = 12;
+    static constexpr int kFFTSize = 1 << kFFTOrder;
+    juce::dsp::FFT mFFT { kFFTOrder };
+    float mHannWindow[1 << 12] = {};
+    float mFFTData[(1 << 12) * 2] = {};
+    bool mHannInit = false;
+
+    void ensureHannWindow()
+    {
+        if (mHannInit) return;
+        for (int i = 0; i < kFFTSize; i++)
+            mHannWindow[i] = 0.5f * (1.f - cosf(juce::MathConstants<float>::twoPi * i / (kFFTSize - 1)));
+        mHannInit = true;
+    }
 
     // Frequency counter state — accumulates cycles over a window
     static constexpr int kFreqMinCycles = 16;
