@@ -1,13 +1,10 @@
-// Generate a MIDI file for VCF filter analysis using keyboard tracking
-// to set cutoff frequency.
+// Generate a MIDI file for VCF filter analysis matching ROM test mode 3.
 //
-// Setup: VCF freq=0, VCF env=127 (positive), VCF kbd=127, instant attack,
-// max sustain. The envelope opens the filter to a frequency determined
-// by the note via kbd tracking. Pulse oscillator on 8', no chorus.
-//
-// For each resonance level, for each note, plays 3s without noise then
-// 3s with noise at 127, with 0.5s gaps. The noise-on segments give the
-// filter frequency response at each cutoff/resonance combination.
+// Setup: ROM calibration patch ($0FA0) -- VCF freq=49, VCF env=0,
+// VCF kbd=127, VCA gate mode, no oscillators, no chorus. Cutoff
+// frequency is set by VCF freq slider + keyboard tracking from the
+// note played. No-noise steps test self-oscillation; noise-on steps
+// give the filter frequency response.
 //
 // Resonances: 0, 25, 50, 76, 101, 127
 // Notes: C2(36), C3(48), C4(60), C5(72), C6(84), C7(96)
@@ -118,28 +115,28 @@ int main(int argc, char* argv[])
     std::vector<uint8_t> track;
     addTempo(track, 500000); // 120 BPM
 
-    // --- Patch setup (matches ROM test mode 3 / APR) ---
-    // Sliders: CC 0x00-0x0F
-    addSysEx(track, 0, 0x00, 0);    // LFO Rate = 0
+    // --- Patch setup (matches ROM test mode 3 at $0FA0) ---
+    // ROM bytes (bit 7 stripped): 40 00 00 00 00 31 7F 00 00 7F 40 00 00 7F 00 00
+    // Switches: 0x22 (8', no osc, chorus off), 0x10 (HPF=1, gate, ENV+)
+    addSysEx(track, 0, 0x00, 64);   // LFO Rate = 64 (moderate)
     addSysEx(track, 5, 0x01, 0);    // LFO Delay = 0
     addSysEx(track, 5, 0x02, 0);    // DCO LFO = 0
     addSysEx(track, 5, 0x03, 0);    // DCO PWM = 0
     addSysEx(track, 5, 0x04, 0);    // DCO Noise = 0 (toggled per step)
-    addSysEx(track, 5, 0x05, 49);   // VCF Freq = 49 (0x31, ROM test patch)
-    addSysEx(track, 5, 0x06, 0);    // VCF Res = 0 (set per step)
-    addSysEx(track, 5, 0x07, 127);  // VCF Env = 127 (max, positive)
+    addSysEx(track, 5, 0x05, 49);   // VCF Freq = 49 (0x31, ROM calibration)
+    addSysEx(track, 5, 0x06, 127);  // VCF Res = 127 (overridden per step)
+    addSysEx(track, 5, 0x07, 0);    // VCF Env = 0 (none)
     addSysEx(track, 5, 0x08, 0);    // VCF LFO = 0
     addSysEx(track, 5, 0x09, 127);  // VCF KBD = 127 (max tracking)
-    addSysEx(track, 5, 0x0A, 127);  // VCA Level = 127
+    addSysEx(track, 5, 0x0A, 64);   // VCA Level = 64 (moderate)
     addSysEx(track, 5, 0x0B, 0);    // Env A = 0 (instant)
     addSysEx(track, 5, 0x0C, 0);    // Env D = 0
     addSysEx(track, 5, 0x0D, 127);  // Env S = 127 (max)
     addSysEx(track, 5, 0x0E, 0);    // Env R = 0
     addSysEx(track, 5, 0x0F, 0);    // DCO Sub = 0
-    // Switches 1: 8' pulse, no saw, chorus off
-    addSysEx(track, 5, 0x10, 0x02 | 0x08 | 0x20);
-    // Switches 2: MAN PWM, ENV+ positive, ENV VCA, HPF=1 (flat)
-    // HPF=1: (3-1)<<3 = 0x10
+    // Switches 1: 0x22 = 8', no pulse, no saw, chorus off
+    addSysEx(track, 5, 0x10, 0x22);
+    // Switches 2: 0x10 = MAN PWM, ENV+ positive, GATE VCA, HPF=1
     addSysEx(track, 5, 0x11, 0x10);
 
     // Settle
@@ -208,7 +205,7 @@ int main(int argc, char* argv[])
     fprintf(stderr, "  Notes: ");
     for (int n = 0; n < nNotes; n++)
         fprintf(stderr, "%s(%d)%s", noteNames[n], notes[n], n < nNotes-1 ? ", " : "\n");
-    fprintf(stderr, "  VCF freq=0, env=127, kbd=127: cutoff tracks note via envelope\n");
+    fprintf(stderr, "  ROM test mode 3: VCF freq=49, env=0, kbd=127, gate VCA, no osc\n");
 
     return 0;
 }

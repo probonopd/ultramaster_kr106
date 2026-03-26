@@ -198,7 +198,7 @@ public:
         juce::String name;
         bool dirty = false;
         if (mProcessor->mInitialDefault)
-            name = "Default";
+            name = "Manual";
         else
         {
             int idx = mProcessor->getCurrentProgram();
@@ -297,10 +297,7 @@ private:
         if (mContextMenu) return;
 
         std::vector<KR106MenuItem> items;
-        items.push_back(KR106MenuItem::item(1, "Overwrite Patch", mProcessor->isCurrentPresetDirty()));
-        items.push_back(KR106MenuItem::sep());
-        items.push_back(KR106MenuItem::item(3, "Copy Patch"));
-        items.push_back(KR106MenuItem::item(4, "Paste Patch", mHasClipboard));
+        items.push_back(KR106MenuItem::item(1, "Save Patch"));
         items.push_back(KR106MenuItem::item(5, "Clear Patch"));
         items.push_back(KR106MenuItem::sep());
         items.push_back(KR106MenuItem::item(6, "Load Patch Bank"));
@@ -348,8 +345,21 @@ private:
         int idx = mProcessor->getCurrentProgram();
         auto preset = mProcessor->getPreset(idx);
 
-        auto* alert = new juce::AlertWindow("Save Preset", "", juce::MessageBoxIconType::NoIcon);
-        alert->addTextEditor("name", preset.name, "Preset name:");
+        // Bank (A/B) and patch (1-8, 1-8) from current index
+        int bank = idx / 64;        // 0=A, 1=B
+        int group = (idx % 64) / 8; // 0-7
+        int patch = idx % 8;        // 0-7
+
+        auto* alert = new juce::AlertWindow("Save Preset", "Location:", juce::MessageBoxIconType::NoIcon);
+        alert->addComboBox("bank", {"A", "B"}, "Bank:");
+        alert->addComboBox("group", {"1", "2", "3", "4", "5", "6", "7", "8"}, "Group:");
+        alert->addComboBox("patch", {"1", "2", "3", "4", "5", "6", "7", "8"}, "Patch:");
+        alert->addTextEditor("name", preset.name, "Name:");
+
+        alert->getComboBoxComponent("bank")->setSelectedItemIndex(bank, juce::dontSendNotification);
+        alert->getComboBoxComponent("group")->setSelectedItemIndex(group, juce::dontSendNotification);
+        alert->getComboBoxComponent("patch")->setSelectedItemIndex(patch, juce::dontSendNotification);
+
         alert->addButton("Save", 1);
         alert->addButton("Cancel", 0);
 
@@ -360,8 +370,15 @@ private:
                 if (result == 1 && safeThis != nullptr)
                 {
                     juce::String name = alert->getTextEditorContents("name").trim();
+                    int b = alert->getComboBoxComponent("bank")->getSelectedItemIndex();
+                    int g = alert->getComboBoxComponent("group")->getSelectedItemIndex();
+                    int p = alert->getComboBoxComponent("patch")->getSelectedItemIndex();
+                    int targetIdx = b * 64 + g * 8 + p;
+
                     if (name.isNotEmpty())
                     {
+                        // Switch to target slot, then save
+                        safeThis->mProcessor->setCurrentProgram(targetIdx);
                         safeThis->mProcessor->saveCurrentPresetToCSV(name);
                         safeThis->repaint();
                     }
@@ -385,8 +402,26 @@ private:
 
     void clearPreset()
     {
-        mProcessor->clearCurrentPreset();
-        repaint();
+        int idx = mProcessor->getCurrentProgram();
+        auto name = mProcessor->getProgramName(idx);
+
+        auto* alert = new juce::AlertWindow("Clear Patch",
+            "Reset \"" + name + "\" to INIT?",
+            juce::MessageBoxIconType::WarningIcon);
+        alert->addButton("Clear", 1);
+        alert->addButton("Cancel", 0);
+
+        juce::Component::SafePointer<KR106PresetDisplay> safeThis(this);
+        alert->enterModalState(true, juce::ModalCallbackFunction::create(
+            [safeThis, alert](int result)
+            {
+                if (result == 1 && safeThis != nullptr)
+                {
+                    safeThis->mProcessor->clearCurrentPreset();
+                    safeThis->repaint();
+                }
+                delete alert;
+            }), false);
     }
 
     void showLoadDialog()

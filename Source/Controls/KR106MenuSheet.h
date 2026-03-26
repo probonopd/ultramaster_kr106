@@ -15,7 +15,7 @@ namespace KR106Theme
     inline juce::Colour bg()        { return juce::Colour(0, 0, 0); }
     inline juce::Colour bright()    { return juce::Colour(0, 255, 0); }
     inline juce::Colour dim()       { return juce::Colour(0, 160, 0); }
-    inline juce::Colour disabled()  { return juce::Colour(0, 60, 0); }
+    inline juce::Colour disabled()  { return juce::Colour(0, 90, 0); }
     inline juce::Colour hoverBg()   { return juce::Colour(0, 60, 0); }
     inline juce::Colour grid()      { return juce::Colour(0, 40, 0); }
     inline juce::Colour border()    { return juce::Colour(0, 100, 0); }

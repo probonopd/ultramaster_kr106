@@ -281,39 +281,53 @@ static void setParam(KR106DSP<float>& dsp, int param, float value)
     dsp.SetParam(param, static_cast<double>(value));
 }
 
+static void decodeSwitches1(KR106DSP<float>& dsp, uint8_t val)
+{
+    int oct = (val & 0x04) ? 2 : (val & 0x02) ? 1 : 0;
+    setParam(dsp, kOctTranspose, static_cast<float>(oct));
+    setParam(dsp, kDcoPulse, (val & 0x08) ? 1.f : 0.f);
+    setParam(dsp, kDcoSaw, (val & 0x10) ? 1.f : 0.f);
+    bool chorusOn = !(val & 0x20);
+    bool chorusL1 = (val & 0x40) != 0;
+    setParam(dsp, kChorusOff, chorusOn ? 0.f : 1.f);
+    setParam(dsp, kChorusI, (chorusOn && chorusL1) ? 1.f : 0.f);
+    setParam(dsp, kChorusII, (chorusOn && !chorusL1) ? 1.f : 0.f);
+}
+
+static void decodeSwitches2(KR106DSP<float>& dsp, uint8_t val)
+{
+    setParam(dsp, kPwmMode, (val & 0x01) ? 0.f : 1.f);
+    setParam(dsp, kVcfEnvInv, (val & 0x02) ? 1.f : 0.f);
+    setParam(dsp, kVcaMode, (val & 0x04) ? 0.f : 1.f);
+    int hpf = 3 - ((val >> 3) & 0x03);
+    setParam(dsp, kHpfFreq, static_cast<float>(hpf));
+}
+
 static void handleSysEx(KR106DSP<float>& dsp, const uint8_t* data, int len)
 {
-    // Roland Juno-106 SysEx payload (after F0): 41 32 0n ctrl val F7
-    if (len < 5 || data[0] != 0x41 || data[1] != 0x32) return;
+    if (len < 4 || data[0] != 0x41) return;
+    int cmd = data[1];
 
-    int ctrl = data[3];
-    int val = data[4];
-
-    if (ctrl <= 0x0F)
+    if (cmd == 0x32 && len >= 5)
     {
-        setParam(dsp, kSysExToParam[ctrl], val / 127.f);
+        // IPR (Individual Parameter): 41 32 0n cc vv
+        int ctrl = data[3];
+        int val = data[4];
+        if (ctrl <= 0x0F)
+            setParam(dsp, kSysExToParam[ctrl], val / 127.f);
+        else if (ctrl == 0x10)
+            decodeSwitches1(dsp, static_cast<uint8_t>(val));
+        else if (ctrl == 0x11)
+            decodeSwitches2(dsp, static_cast<uint8_t>(val));
     }
-    else if (ctrl == 0x10)
+    else if ((cmd == 0x30 || cmd == 0x31) && len >= 21)
     {
-        // Switches 1: octave, pulse, saw, chorus
-        int oct = (val & 0x04) ? 2 : (val & 0x02) ? 1 : 0;
-        setParam(dsp, kOctTranspose, static_cast<float>(oct));
-        setParam(dsp, kDcoPulse, (val & 0x08) ? 1.f : 0.f);
-        setParam(dsp, kDcoSaw, (val & 0x10) ? 1.f : 0.f);
-        bool chorusOn = !(val & 0x20);
-        bool chorusL1 = (val & 0x40) != 0;
-        setParam(dsp, kChorusOff, chorusOn ? 0.f : 1.f);
-        setParam(dsp, kChorusI, (chorusOn && chorusL1) ? 1.f : 0.f);
-        setParam(dsp, kChorusII, (chorusOn && !chorusL1) ? 1.f : 0.f);
-    }
-    else if (ctrl == 0x11)
-    {
-        // Switches 2: PWM mode, VCF polarity, VCA mode, HPF
-        setParam(dsp, kPwmMode, (val & 0x01) ? 0.f : 1.f);
-        setParam(dsp, kVcfEnvInv, (val & 0x02) ? 1.f : 0.f);
-        setParam(dsp, kVcaMode, (val & 0x04) ? 0.f : 1.f);
-        int hpf = 3 - ((val >> 3) & 0x03);
-        setParam(dsp, kHpfFreq, static_cast<float>(hpf));
+        // APR (All Parameter): 41 30 0n pp [16 sliders] [sw1] [sw2]
+        const uint8_t* p = data + 4;
+        for (int cc = 0; cc < 16; cc++)
+            setParam(dsp, kSysExToParam[cc], p[cc] / 127.f);
+        decodeSwitches1(dsp, p[16]);
+        decodeSwitches2(dsp, p[17]);
     }
 }
 
