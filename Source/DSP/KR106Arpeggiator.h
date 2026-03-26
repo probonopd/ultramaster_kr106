@@ -46,7 +46,7 @@ static constexpr double kDivBeats[kNumArpDivisions] = {
 };
 
 static constexpr const char* kDivNames[kNumArpDivisions] = {
-  "1/1", "1/2", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32"
+  "4 Beats", "2 Beats", "Quarter", "Quarter Triplet", "Eighth", "Eighth Triplet", "16th Note", "16th Triplet", "32nd Note"
 };
 
 // Map slider 0-1 to division index (7 positions)
@@ -267,26 +267,48 @@ struct Arpeggiator
 
     if (mSyncToHost)
     {
-      // DAW sync: silence when transport is stopped
-      if (!mHostPlaying)
+      int div = std::max(0, std::min(mDivision, static_cast<int>(kNumArpDivisions) - 1));
+      double divBeats = kDivBeats[div];
+
+      if (mHostPlaying)
       {
-        if (mLastNote >= 0) { noteOff(mLastNote, 0); mLastNote = -1; }
-        mLastSyncStep = -1;
+        // Transport running: lock steps to beat grid
+        double beatsPerSample = mHostBPM / (60.0 * static_cast<double>(mSampleRate));
+
+        for (int s = 0; s < nFrames; s++)
+        {
+          double beatPos = mHostBeatPos + s * beatsPerSample;
+          int64_t stepNow = static_cast<int64_t>(std::floor(beatPos / divBeats));
+
+          if (stepNow != mLastSyncStep)
+          {
+            mLastSyncStep = stepNow;
+            mTickCount.fetch_add(1, std::memory_order_relaxed);
+
+            if (mLastNote >= 0)
+              noteOff(mLastNote, s);
+
+            int note = NextNote();
+            if (note >= 0)
+            {
+              noteOn(note, s);
+              mLastNote = note;
+            }
+          }
+        }
         return;
       }
 
-      int div = std::max(0, std::min(mDivision, static_cast<int>(kNumArpDivisions) - 1));
-      double divBeats = kDivBeats[div];
-      double beatsPerSample = mHostBPM / (60.0 * static_cast<double>(mSampleRate));
+      // Transport stopped: free-run at tempo-matched rate
+      float syncRate = static_cast<float>(mHostBPM / divBeats);
+      float inc = syncRate / (60.f * mSampleRate);
 
       for (int s = 0; s < nFrames; s++)
       {
-        double beatPos = mHostBeatPos + s * beatsPerSample;
-        int64_t stepNow = static_cast<int64_t>(std::floor(beatPos / divBeats));
-
-        if (stepNow != mLastSyncStep)
+        mPhase += inc;
+        if (mPhase >= 1.f)
         {
-          mLastSyncStep = stepNow;
+          mPhase -= 1.f;
           mTickCount.fetch_add(1, std::memory_order_relaxed);
 
           if (mLastNote >= 0)

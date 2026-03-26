@@ -468,3 +468,68 @@ public:
 private:
   bool* mSyncFlag = nullptr;
 };
+
+// LFO Rate slider: when DAW sync is enabled, draws tick marks for note
+// divisions and snaps to discrete positions. Same pattern as ArpRateSlider
+// but with 12 LFO divisions (includes Maxima/Longa/Breve).
+class KR106LfoRateSlider : public KR106Slider
+{
+public:
+  KR106LfoRateSlider(juce::RangedAudioParameter* param, KR106Tooltip* tip,
+                     const juce::Image& handleImg, bool* syncFlag)
+    : KR106Slider(param, tip, handleImg), mSyncFlag(syncFlag) {}
+
+  void paintTickMarks(juce::Graphics& g) override
+  {
+    if (mSyncFlag && *mSyncFlag)
+    {
+      auto bright = juce::Colour(219, 219, 219);
+      auto dim    = juce::Colour(126, 126, 126);
+      float tw = 17.f + static_cast<float>(mExtraRight);
+      for (int i = 0; i < kr106::kNumLfoDivisions; i++)
+      {
+        float norm = static_cast<float>(i) / static_cast<float>(kr106::kNumLfoDivisions - 1);
+        float y = std::round(44.f - norm * 40.f);
+        bool major = (i == 0 || i == kr106::kNumLfoDivisions / 2 || i == kr106::kNumLfoDivisions - 1);
+        g.setColour(major ? bright : dim);
+        g.fillRect(1.f, y, tw, 1.f);
+      }
+    }
+    else
+    {
+      KR106Slider::paintTickMarks(g);
+    }
+  }
+
+  void mouseDrag(const juce::MouseEvent& e) override
+  {
+    KR106Slider::mouseDrag(e);
+    if (mSyncFlag && *mSyncFlag && mParam)
+    {
+      float val = mParam->getValue();
+      float steps = static_cast<float>(kr106::kNumLfoDivisions - 1);
+      float snapped = std::round(val * steps) / steps;
+      if (snapped != val)
+      {
+        mParam->setValueNotifyingHost(snapped);
+        repaint();
+      }
+    }
+  }
+
+  void mouseUp(const juce::MouseEvent& e) override
+  {
+    if (mSyncFlag && *mSyncFlag && mParam)
+    {
+      float val = mParam->getValue();
+      float steps = static_cast<float>(kr106::kNumLfoDivisions - 1);
+      float snapped = std::round(val * steps) / steps;
+      if (snapped != val)
+        mParam->setValueNotifyingHost(snapped);
+    }
+    KR106Slider::mouseUp(e);
+  }
+
+private:
+  bool* mSyncFlag = nullptr;
+};

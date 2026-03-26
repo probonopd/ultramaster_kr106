@@ -235,6 +235,7 @@ void KR106DSP<T>::SetParam(int paramIdx, double value)
     case kLfoRate:
       mSliderLfoRate = static_cast<float>(value);
       mLFO.SetRate(mSliderLfoRate, mSampleRate);
+      mLFO.mDivision = kr106::lfoDivisionFromSlider(mSliderLfoRate);
       break;
     case kLfoDelay:
       mSliderLfoDelay = static_cast<float>(value);

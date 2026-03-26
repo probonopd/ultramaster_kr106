@@ -193,12 +193,23 @@ KR106AudioProcessor::KR106AudioProcessor()
     float hz = juce::jlimit(1.f, 20000.f, parseHz(text));
     return bsearch([vcfHzFromSlider](float v) { return vcfHzFromSlider(v); }, hz);
   };
-  SFV fmtLfoRate = [this](float v, int) {
+  SFV fmtLfoRate = [this](float v, int) -> juce::String {
+    if (mLfoSyncHost)
+    {
+      int d = kr106::lfoDivisionFromSlider(v);
+      return juce::String(kr106::kLfoDivNames[d]);
+    }
     float hz = (mDSP.mAdsrMode == 0) ? kr106::LFO::lfoFreqJ6(v)
                                       : kr106::LFO::lfoFreqJ106(v);
     return juce::String(hz, 1) + " Hz";
   };
   VFS parseLfoRate = [this, bsearch, parseHz](const juce::String& text) -> float {
+    if (mLfoSyncHost)
+    {
+      for (int d = 0; d < kr106::kNumLfoDivisions; d++)
+        if (text.trim().equalsIgnoreCase(kr106::kLfoDivNames[d]))
+          return kr106::sliderFromLfoDivision(d);
+    }
     return bsearch([this](float v) {
       return (mDSP.mAdsrMode == 0) ? kr106::LFO::lfoFreqJ6(v)
                                     : kr106::LFO::lfoFreqJ106(v);
@@ -852,25 +863,34 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     mUIMidiTail.store((tail + 1) % kUIMidiQueueSize, std::memory_order_release);
   }
 
-  // --- Host sync for arpeggiator ---
-  if (mArpSyncHost)
+  // --- Host sync for arpeggiator and LFO ---
+  mDSP.mArp.mSyncToHost = mArpSyncHost;
+  mDSP.mLFO.mSyncToHost = mLfoSyncHost;
+  if (mArpSyncHost || mLfoSyncHost)
   {
-    mDSP.mArp.mSyncToHost = true;
     if (auto* ph = getPlayHead())
     {
       if (auto pos = ph->getPosition())
       {
-        mDSP.mArp.mHostPlaying = pos->getIsPlaying();
-        if (auto bpm = pos->getBpm())
-          mDSP.mArp.mHostBPM = *bpm;
-        if (auto ppq = pos->getPpqPosition())
-          mDSP.mArp.mHostBeatPos = *ppq;
+        bool playing = pos->getIsPlaying();
+        double bpm = 120.0;
+        double ppq = 0.0;
+        if (auto b = pos->getBpm()) bpm = *b;
+        if (auto p = pos->getPpqPosition()) ppq = *p;
+
+        if (mArpSyncHost)
+        {
+          mDSP.mArp.mHostPlaying = playing;
+          mDSP.mArp.mHostBPM = bpm;
+          mDSP.mArp.mHostBeatPos = ppq;
+        }
+        if (mLfoSyncHost)
+        {
+          mDSP.mLFO.mHostPlaying = playing;
+          mDSP.mLFO.mHostBPM = bpm;
+        }
       }
     }
-  }
-  else
-  {
-    mDSP.mArp.mSyncToHost = false;
   }
 
   // --- Process DSP ---
@@ -1298,6 +1318,9 @@ void KR106AudioProcessor::loadGlobalSettings()
   auto arpSync = KR106PresetManager::getSetting("arpSyncHost", false);
   mArpSyncHost = (bool)arpSync;
 
+  auto lfoSync = KR106PresetManager::getSetting("lfoSyncHost", false);
+  mLfoSyncHost = (bool)lfoSync;
+
   auto monoRetrig = KR106PresetManager::getSetting("monoRetrigger", true);
   mMonoRetrigger = (bool)monoRetrig;
   mDSP.mMonoRetrigger = mMonoRetrigger;
@@ -1345,6 +1368,7 @@ void KR106AudioProcessor::saveGlobalSettings()
   KR106PresetManager::saveSetting("ignoreVelocity", mIgnoreVelocity);
   KR106PresetManager::saveSetting("arpLimitKbd", mArpLimitKbd);
   KR106PresetManager::saveSetting("arpSyncHost", mArpSyncHost);
+  KR106PresetManager::saveSetting("lfoSyncHost", mLfoSyncHost);
   KR106PresetManager::saveSetting("monoRetrigger", mMonoRetrigger);
   KR106PresetManager::saveSetting("j6ClassicVcf", mJ6ClassicVcf);
   KR106PresetManager::saveSetting("vcfOversample", mVcfOversample);

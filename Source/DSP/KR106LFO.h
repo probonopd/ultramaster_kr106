@@ -19,6 +19,61 @@
 namespace kr106
 {
 
+// LFO note divisions for DAW sync (ordered slowest to fastest)
+enum LfoDivision
+{
+  kLfoMaxima = 0, // 24 beats
+  kLfoLonga,      // 16 beats
+  kLfoBreve,      // 8 beats
+  kLfoDiv1,       // 4 beats (whole note)
+  kLfoDiv2,       // 2 beats (half note)
+  kLfoDiv4,       // 1 beat (quarter note)
+  kLfoDiv4T,      // 1/4 triplet
+  kLfoDiv8,       // 1/8 note
+  kLfoDiv8T,      // 1/8 triplet
+  kLfoDiv16,      // 1/16 note
+  kLfoDiv16T,     // 1/16 triplet
+  kLfoDiv32,      // 1/32 note
+  kLfoDiv32T,     // 1/32 triplet
+  kLfoDiv64,      // 1/64 note
+  kLfoDiv128,     // 1/128 note
+  kNumLfoDivisions
+};
+
+// Beats per LFO cycle for each division
+static constexpr double kLfoDivBeats[kNumLfoDivisions] = {
+  24.0,        // Maxima
+  16.0,        // Longa
+  8.0,         // Breve
+  4.0,         // 1/1
+  2.0,         // 1/2
+  1.0,         // 1/4
+  2.0 / 3.0,   // 1/4T
+  0.5,         // 1/8
+  1.0 / 3.0,   // 1/8T
+  0.25,        // 1/16
+  1.0 / 6.0,   // 1/16T
+  0.125,       // 1/32
+  1.0 / 12.0,  // 1/32T
+  0.0625,      // 1/64
+  0.03125      // 1/128
+};
+
+static constexpr const char* kLfoDivNames[kNumLfoDivisions] = {
+  "24 Beats", "16 Beats", "8 Beats", "4 Beats", "2 Beats", "Quarter", "Quarter Triplet", "Eighth", "Eighth Triplet", "16th Note", "16th Triplet", "32nd Note", "32nd Triplet", "64th Note", "128th Note"
+};
+
+static inline int lfoDivisionFromSlider(float t)
+{
+  int d = static_cast<int>(std::round(t * (kNumLfoDivisions - 1)));
+  return std::max(0, std::min(d, kNumLfoDivisions - 1));
+}
+
+static inline float sliderFromLfoDivision(int d)
+{
+  return static_cast<float>(d) / static_cast<float>(kNumLfoDivisions - 1);
+}
+
 struct LFO
 {
   float mPos        = 0.f; // phase [0, 1)
@@ -33,6 +88,13 @@ struct LFO
   int mMode         = 0;     // 0=auto, 1=manual
   bool mTrigger     = false; // manual trigger state
   bool mJ6Mode      = false; // true = Juno-6, false = Juno-106
+
+  // DAW sync state (set by processor each block)
+  bool mSyncToHost   = false;
+  bool mHostPlaying  = false;
+  bool mHostWasPlaying = false;
+  double mHostBPM    = 120.0;
+  int mDivision      = kLfoDiv4; // current division (when synced)
 
   // --- J106 two-stage delay state ---
   float mHoldoffRemaining = 0.f; // samples remaining in holdoff phase
@@ -207,6 +269,19 @@ struct LFO
   // Process one sample, returns [-1, +1]
   float Process()
   {
+    // When synced to host, override frequency from tempo + division
+    float freq = mFreq;
+    if (mSyncToHost)
+    {
+      int div = std::max(0, std::min(mDivision, static_cast<int>(kNumLfoDivisions) - 1));
+      freq = static_cast<float>(mHostBPM / (60.0 * kLfoDivBeats[div])) / mSampleRate;
+
+      // Reset phase on transport start
+      if (mHostPlaying && !mHostWasPlaying)
+        mPos = 0.f;
+      mHostWasPlaying = mHostPlaying;
+    }
+
     // Auto: LFO runs while any voice is active, delay envelope free-runs
     //        (persists across legato notes, only resets when all voices stop)
     // Manual: LFO runs while any voice is active, delay envelope resets
@@ -229,7 +304,7 @@ struct LFO
 
     mWasActive = newState;
 
-    mPos += mFreq;
+    mPos += freq;
     if (mPos >= 1.f)
       mPos -= 1.f;
 

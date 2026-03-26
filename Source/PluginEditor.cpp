@@ -98,7 +98,7 @@ KR106Editor::KR106Editor(KR106AudioProcessor& p)
     addSlider(kArpRate, new KR106ArpRateSlider(param(kArpRate), tip, sliderHdl, &p.mArpSyncHost), 227, 33, 19, 49);
 
     // === LFO SECTION ===
-    addSlider(kLfoRate, new KR106Slider(param(kLfoRate), tip, sliderHdl), 249, 33, 20, 49)->setExtraRight(1);
+    addSlider(kLfoRate, new KR106LfoRateSlider(param(kLfoRate), tip, sliderHdl, &p.mLfoSyncHost), 249, 33, 20, 49)->setExtraRight(1);
     addSlider(kLfoDelay, new KR106Slider(param(kLfoDelay), tip, sliderHdl), 267, 33, 19, 49);
     add(new KR106Switch(param(kLfoMode), switchV, 2),   294, 46,  9, 24);
 
@@ -226,6 +226,7 @@ void KR106Editor::showSettingsMenu()
     items.push_back(KR106MenuItem::item(20, "Ignore MIDI Velocity",      true, mProcessor.mIgnoreVelocity));
     items.push_back(KR106MenuItem::item(21, "Limit Arp to Kbd Range", true, mProcessor.mArpLimitKbd));
     items.push_back(KR106MenuItem::item(24, "Sync Arp to Host",      true, mProcessor.mArpSyncHost));
+    items.push_back(KR106MenuItem::item(25, "Sync LFO to Host",      true, mProcessor.mLfoSyncHost));
     items.push_back(KR106MenuItem::item(22, "Mono Retrigger",        true, mProcessor.mMonoRetrigger));
     items.push_back(KR106MenuItem::item(23, "Classic VCF Frq Scale", true, mProcessor.mJ6ClassicVcf));
     items.push_back(KR106MenuItem::sep());
@@ -270,6 +271,10 @@ void KR106Editor::showSettingsMenu()
             if (r == 24)
             {
                 mProcessor.mArpSyncHost = !mProcessor.mArpSyncHost;
+            }
+            if (r == 25)
+            {
+                mProcessor.mLfoSyncHost = !mProcessor.mLfoSyncHost;
             }
             if (r == 22)
             {
