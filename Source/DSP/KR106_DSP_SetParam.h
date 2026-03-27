@@ -262,10 +262,11 @@ void KR106DSP<T>::SetParam(int paramIdx, double value)
       // The control voltage ranges from +4V (max cut) to -6V (max boost)
       // with -1V as unity. A 15K pullup to +15V biases the asymmetric CV
       // range into a symmetric gain range. The PC1252H2 control constant
-      // is -5.9 mV/dB, yielding approximately +/-10.6 dB of gain range.
-      // dB-linear law: slider 0 = -10.6 dB, slider 0.5 = unity, slider 1 = +10.6 dB
-      static constexpr float kMinDB = -10.6f;
-      static constexpr float kMaxDB = +10.6f;
+      // is -5.9 mV/dB, yielding approximately +/-10 dB of gain range.
+      // Confirmed by hardware recording (Lewis Francis): -9.8 dB / +9.9 dB.
+      // dB-linear law: slider 0 = -10 dB, slider 0.5 = unity, slider 1 = +10 dB
+      static constexpr float kMinDB = -10.f;
+      static constexpr float kMaxDB = +10.f;
       float dB = kMinDB + (kMaxDB - kMinDB) * static_cast<float>(value);
       mVcaLevel = powf(10.f, dB / 20.f);
       break;

@@ -223,16 +223,14 @@ KR106AudioProcessor::KR106AudioProcessor()
     return juce::jlimit(0.f, 1.f, text.getFloatValue() / 1500.f);
   };
   SFV fmtVcaLevel = [](float v, int) {
-    // Match actual DSP gain: linear 0.6405..1.3567 (−3.9..+2.7 dB)
-    double gain = 0.6405 + (1.3567 - 0.6405) * (double)v;
-    double dB = 20.0 * std::log10(gain);
+    // dB-linear: slider 0 = -10 dB, 0.5 = unity, 1 = +10 dB
+    double dB = -10.0 + 20.0 * (double)v;
     if (dB >= 0.0) return "+" + juce::String(dB, 1) + " dB";
     return juce::String(dB, 1) + " dB";
   };
   VFS parseVcaLevel = [](const juce::String& text) -> float {
     double dB = text.getDoubleValue();
-    double gain = std::pow(10.0, dB / 20.0);
-    return juce::jlimit(0.f, 1.f, static_cast<float>((gain - 0.6405) / (1.3567 - 0.6405)));
+    return juce::jlimit(0.f, 1.f, static_cast<float>((dB + 10.0) / 20.0));
   };
   SFV fmtTuning = [](float v, int) {
     double cents = (double)v * 100.0;
