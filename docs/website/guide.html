@@ -375,12 +375,13 @@
     <img src="scope.png" alt="Scope display modes" class="screenshot" style="margin-top: 0.8rem; pointer-events: none; flex-basis: 100%;">
   </summary>
 
-  <p>The oscilloscope in the upper right. Left-click or right-click to cycle forward or backward through five display modes:</p>
+  <p>The oscilloscope in the upper right. Left-click or right-click to cycle forward or backward through six display modes:</p>
   <ul>
     <li><strong>Waveform</strong> Triggered oscilloscope showing the raw audio output.</li>
     <li><strong>Spectrum</strong> Frequency spectrum analyzer (logarithmic).</li>
     <li><strong>ADSR</strong> Graphs the current envelope shape in real time.</li>
     <li><strong>VCF</strong> Graphs the filter frequency response.</li>
+    <li><strong>Patch Bank</strong> A 16x8 grid of all 128 presets. Click a cell to load a preset. Drag from a cell and release to launch a bouncing ball that changes presets as it travels. Click the &lt; &gt; buttons at the bottom to cycle scope modes.</li>
     <li><strong>About</strong> Version and credits.</li>
   </ul>
   </details>
@@ -404,8 +405,7 @@
     <li><strong>Patch Manager</strong> (database icon) Opens the patch manager menu with these options:</li>
   </ul>
   <ul>
-    <li><strong>Overwrite Patch</strong> Save current edits to the selected preset slot. Disabled if no changes have been made.</li>
-    <li><strong>Copy Patch / Paste Patch</strong> Copy the current patch to the clipboard and paste it into another slot.</li>
+    <li><strong>Save Patch</strong> Save the current sound to any slot. A dialog lets you choose the bank (A/B), group (1-8), patch (1-8), and name.</li>
     <li><strong>Clear Patch</strong> Reset the selected slot to an init patch.</li>
     <li><strong>Load Patch Bank</strong> Load a CSV patch bank file.</li>
     <li><strong>Reveal in Finder</strong> Open the preset storage folder.</li>
