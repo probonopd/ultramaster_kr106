@@ -289,9 +289,17 @@ void KR106Editor::showSettingsMenu()
                 });
             }
             if (r == 40)
+            {
+                mSettingsMenu.reset();
                 showVarianceSheet();
+                return;
+            }
             if (r == 41)
+            {
+                mSettingsMenu.reset();
                 showQwertyDiagram();
+                return;
+            }
             mProcessor.saveGlobalSettings();
         }, 10);
 
