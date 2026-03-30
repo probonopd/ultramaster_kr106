@@ -553,6 +553,23 @@
     <h2>Changelog</h2>
 
     <details open>
+      <summary><span class="ver">2.4.7</span> Per-model DSP framework, chorus filter, AU SysEx variant</summary>
+      <ul>
+        <li>Model enum cleanup: mSynthModel is now a proper enum (kJ6/kJ60/kJ106), no magic numbers</li>
+        <li>3-way parameter dispatch: every model-dependent slider has J6, J60, and J106 functions with fallback chain</li>
+        <li>Oscillator mix levels normalized: sub and noise functions return 0-1, kSubAmp/kNoiseAmp handle hardware scaling</li>
+        <li>kSubAmp corrected from 0.625 to 0.5942 (matches J6 hardware measurement: +1.5 dB over saw)</li>
+        <li>BBD chorus prefilter: 2nd-order Butterworth + 1-pole from ngspice simulation of actual transistor circuit</li>
+        <li>AU SysEx variant: separate "Ultramaster KR-106 (SysEx)" AU (aumf) for Logic Pro SysEx support</li>
+        <li>HPF slider: J60 now correctly uses 4-position switch (was showing continuous J6 slider)</li>
+        <li>VCA Level: J60 now uses +/-10 dB model (was incorrectly forced to unity like J6)</li>
+        <li>SysEx: sub switch inferred from sub level byte (J106 has no physical sub switch)</li>
+        <li>J60 noise/sub CV curves from ngspice transistor simulation (2SA1015 PNP + BA662)</li>
+        <li>SysEx param test: lowered sustain for audible decay, uses manual mode APR</li>
+      </ul>
+    </details>
+
+    <details>
       <summary><span class="ver">2.4.6</span> Per-model DSP curves, SysEx fixes, LV2 settings params</summary>
       <ul>
         <li>Sub oscillator and noise levels calibrated from Juno-6 hardware measurements (11-point tables)</li>

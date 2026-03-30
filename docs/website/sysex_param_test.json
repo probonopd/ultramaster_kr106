@@ -1,0 +1,58 @@
+{
+  "title": "KR106 SysEx Parameter Test",
+  "description": "A/B test for verifying Juno-106 SysEx parameter mapping. Play into both real hardware and plugin, compare audio.",
+  "bpm": 120,
+  "note": 60,
+  "velocity": 127,
+  "note_duration_beats": 2.0,
+  "tail_beats": 1.5,
+  "init_patch": {
+    "mode": "APR manual (0x31)",
+    "switches": {
+      "sw1": "0x32",
+      "sw1_bits": "oct 8' + saw on + chorus off",
+      "sw2": "0x19",
+      "sw2_bits": "PWM manual + VCF env+ + VCA env + HPF flat"
+    },
+    "sliders": {
+      "0x00_lfo_rate": 0,
+      "0x01_lfo_delay": 0,
+      "0x02_dco_lfo": 0,
+      "0x03_dco_pwm": 64,
+      "0x04_dco_noise": 0,
+      "0x05_vcf_freq": 64,
+      "0x06_vcf_res": 0,
+      "0x07_vcf_env": 0,
+      "0x08_vcf_lfo": 0,
+      "0x09_vcf_kbd": 0,
+      "0x0A_vca_level": 64,
+      "0x0B_env_attack": 0,
+      "0x0C_env_decay": 64,
+      "0x0D_env_sustain": 80,
+      "0x0E_env_release": 40,
+      "0x0F_dco_sub": 0
+    }
+  },
+  "structure": [
+    {"type": "apr", "description": "Set init patch"},
+    {"type": "note", "description": "Reference note (init patch)"},
+    {"type": "test", "index": 0, "ctrl": "0x00", "name": "LFO Rate", "init": 0, "test": 127, "setup": [{"ctrl": "0x02", "val": 127}], "teardown": [{"ctrl": "0x02", "val": 0}], "expect": "Vibrato speed increases (DCO LFO enabled for audibility)"},
+    {"type": "test", "index": 1, "ctrl": "0x01", "name": "LFO Delay", "init": 0, "test": 127, "setup": [{"ctrl": "0x00", "val": 80}, {"ctrl": "0x02", "val": 127}], "teardown": [{"ctrl": "0x00", "val": 0}, {"ctrl": "0x02", "val": 0}], "expect": "Vibrato fades in slowly after note-on"},
+    {"type": "test", "index": 2, "ctrl": "0x02", "name": "DCO LFO", "init": 0, "test": 127, "setup": [{"ctrl": "0x00", "val": 80}], "teardown": [{"ctrl": "0x00", "val": 0}], "expect": "Strong pitch vibrato"},
+    {"type": "test", "index": 3, "ctrl": "0x03", "name": "DCO PWM", "init": 64, "test": 127, "expect": "Pulse width narrows (thinner, nasal tone)"},
+    {"type": "test", "index": 4, "ctrl": "0x04", "name": "DCO Noise", "init": 0, "test": 127, "expect": "White noise mixed in"},
+    {"type": "test", "index": 5, "ctrl": "0x05", "name": "VCF Freq", "init": 64, "test": 0, "expect": "Filter fully closed (very dark/muffled)"},
+    {"type": "test", "index": 6, "ctrl": "0x06", "name": "VCF Res", "init": 0, "test": 127, "expect": "Strong resonance peak, may self-oscillate"},
+    {"type": "test", "index": 7, "ctrl": "0x07", "name": "VCF Env", "init": 0, "test": 127, "setup": [{"ctrl": "0x0D", "val": 0}, {"ctrl": "0x0C", "val": 40}], "teardown": [{"ctrl": "0x0D", "val": 80}, {"ctrl": "0x0C", "val": 64}], "expect": "Filter sweep on each note (sustain dropped, decay shortened)"},
+    {"type": "test", "index": 8, "ctrl": "0x08", "name": "VCF LFO", "init": 0, "test": 127, "setup": [{"ctrl": "0x00", "val": 80}], "teardown": [{"ctrl": "0x00", "val": 0}], "expect": "Filter wobble/wah effect"},
+    {"type": "test", "index": 9, "ctrl": "0x09", "name": "VCF KBD", "init": 0, "test": 127, "expect": "Filter tracks keyboard (higher notes brighter)"},
+    {"type": "test", "index": 10, "ctrl": "0x0A", "name": "VCA Level", "init": 64, "test": 127, "expect": "Volume increases"},
+    {"type": "test", "index": 11, "ctrl": "0x0B", "name": "ENV Attack", "init": 0, "test": 127, "expect": "Slow fade-in on note-on"},
+    {"type": "test", "index": 12, "ctrl": "0x0C", "name": "ENV Decay", "init": 64, "test": 127, "expect": "Longer decay to sustain level"},
+    {"type": "test", "index": 13, "ctrl": "0x0D", "name": "ENV Sustain", "init": 80, "test": 0, "expect": "Note decays to silence (no sustain)"},
+    {"type": "test", "index": 14, "ctrl": "0x0E", "name": "ENV Release", "init": 40, "test": 127, "expect": "Long tail after note-off"},
+    {"type": "test", "index": 15, "ctrl": "0x0F", "name": "DCO Sub", "init": 0, "test": 127, "expect": "Sub oscillator added (octave below, square wave)"},
+    {"type": "apr", "description": "Reset to init patch"},
+    {"type": "note", "description": "Final note (should match reference)"}
+  ]
+}

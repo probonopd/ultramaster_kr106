@@ -41,13 +41,13 @@ SYSEX_PARAMS = [
     (0x04, "DCO Noise",   0,   127,  [],                       []),
     (0x05, "VCF Freq",    64,  0,    [],                       []),            # fully closed
     (0x06, "VCF Res",     0,   127,  [],                       []),
-    (0x07, "VCF Env",     0,   127,  [(0x0D, 0), (0x0C, 40)],  [(0x0D, 127), (0x0C, 64)]),  # drop sustain, short decay so env sweeps
+    (0x07, "VCF Env",     0,   127,  [(0x0D, 0), (0x0C, 40)],  [(0x0D, 80), (0x0C, 64)]),  # drop sustain, short decay so env sweeps
     (0x08, "VCF LFO",     0,   127,  [(0x00, 80)],            [(0x00, 0)]),   # need LFO rate to hear filter wobble
     (0x09, "VCF KBD",     0,   127,  [],                       []),
     (0x0A, "VCA Level",   64,  127,  [],                       []),
     (0x0B, "ENV Attack",  0,   127,  [],                       []),
     (0x0C, "ENV Decay",   64,  127,  [],                       []),
-    (0x0D, "ENV Sustain", 127, 0,    [],                       []),
+    (0x0D, "ENV Sustain", 80,  0,    [],                       []),
     (0x0E, "ENV Release", 40,  127,  [],                       []),
     (0x0F, "DCO Sub",     0,   127,  [],                       []),
 ]
@@ -59,7 +59,7 @@ INIT_SLIDERS[0x05] = 64   # VCF Freq mid
 INIT_SLIDERS[0x0A] = 64   # VCA Level center
 INIT_SLIDERS[0x0B] = 0    # Attack instant
 INIT_SLIDERS[0x0C] = 64   # Decay medium
-INIT_SLIDERS[0x0D] = 127  # Sustain full
+INIT_SLIDERS[0x0D] = 80   # Sustain ~63% (lets decay be audible)
 INIT_SLIDERS[0x0E] = 40   # Release short
 
 # sw1: oct 8' (0x02) + saw on (0x10) + chorus off (0x20) = 0x32
