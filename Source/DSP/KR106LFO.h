@@ -79,7 +79,9 @@ struct LFO
   float mDelayCoeff = 0.f; // J6: RC envelope coefficient (0 = instant)
   float mDelayParam = 0.f; // J6: tau in seconds
   float mSampleRate = 44100.f;
-  bool mActive      = false; // any voice currently gated?
+  bool mActive      = false; // any voice busy (including release tails)?
+  bool mGated       = false; // any voice has active gate (key held)?
+  bool mWasGated    = false; // previous block's gated state
   bool mWasActive   = false;
   int mMode         = 0;     // 0=auto, 1=manual
   bool mTrigger     = false; // manual trigger state
@@ -96,6 +98,7 @@ struct LFO
   float mHoldoffRemaining = 0.f; // samples remaining in holdoff phase
   float mRampPerSample    = 0.f; // depth increment per sample during ramp
   bool  mInHoldoff        = false;
+  bool  mArmed            = true; // armed for reset (all voices were silent)
   float mSlider           = 0.f; // stored slider value for reset
 
   // J60 LFO rate: same circuit as J6 (A-taper pot differs but function is same).
@@ -186,7 +189,7 @@ struct LFO
   static float lfoFreqJ106(float t)
   {
     float coeff = lfoSpeedCoeff(t * 127.f);
-    return coeff * kMainLoopRate / 16384.f;
+    return coeff * kDelayTickRate / 16384.f;
   }
 
   void SetRate(float slider, float sampleRate)
@@ -214,11 +217,10 @@ struct LFO
   //   Linear fade-in until 16-bit overflow, then clamp to full depth.
   //   Ramp table (0B30_LfoDelayRampTbl): 8 entries indexed by pot >> 4.
 
-  // LFO effective tick rate: the main loop runs at 238.1 Hz (4.2 ms), but
-  // the LFO is two-cycle (alternates rising/falling each iteration), so
-  // it updates at half the loop rate. Measured: MIDI 66 → table coeff 698
-  // → 4.84 Hz → 4.84 × 16384 / 698 = 113.6 Hz effective.
-  static constexpr float kMainLoopRate = 113.6f;
+  // LFO delay tick rate: the main loop runs at 238.1 Hz (4.2 ms).
+  // The LFO *oscillator* is two-cycle (half rate), but the delay
+  // holdoff and ramp accumulators run every main loop iteration.
+  static constexpr float kDelayTickRate = 238.1f;
 
   // Clean-room LFO delay ramp table (0B30_LfoDelayRampTbl).
   // 8 entries, indexed by (pot >> 4). Larger value = faster ramp.
@@ -241,7 +243,7 @@ struct LFO
     if (inc >= ADSR::kEnvMax) return 0.f; // instant
     // ticks to reach 0x4000: accumulator >= 0x4000 after ceil(0x4000/inc) ticks
     float ticks = static_cast<float>(ADSR::kEnvMax) / static_cast<float>(inc);
-    return ticks / kMainLoopRate;
+    return ticks / kDelayTickRate;
   }
 
   // Compute ramp rate (depth per second) for J106 LFO delay.
@@ -254,7 +256,7 @@ struct LFO
     int idx = std::clamp(pot >> 4, 0, 7);
     uint16_t rampInc = kLfoRampTable[idx];
     if (rampInc == 0xFFFF) return 1e6f; // instant
-    return (static_cast<float>(rampInc) / 65536.f) * kMainLoopRate;
+    return (static_cast<float>(rampInc) / 65536.f) * kDelayTickRate;
   }
 
   void SetDelay(float slider)
@@ -273,7 +275,7 @@ struct LFO
 
   void SetMode(int mode) { mMode = mode; }
   void SetTrigger(bool trig) { mTrigger = trig; }
-  void SetVoiceActive(bool active) { mActive = active; }
+  void SetVoiceActive(bool busy, bool gated) { mActive = busy; mGated = gated; }
 
   // Process one sample, returns [-1, +1]
   float Process()
@@ -291,33 +293,43 @@ struct LFO
       mHostWasPlaying = mHostPlaying;
     }
 
-    // Auto: LFO runs while any voice is active, delay envelope free-runs
-    //        (persists across legato notes, only resets when all voices stop)
-    // Manual: LFO runs while any voice is active, delay envelope resets
-    //         on each new note-on (retrigger on every keypress)
+    // D7811G firmware LFO delay state machine:
+    // Reset trigger: all voices go silent (voiceRun=0), then a new note starts.
+    // Legato (voiceRun stays nonzero) does NOT reset the delay.
+    // Manual mode: resets on each new gate (each key-on).
     bool newState = mActive || mTrigger;
+    bool gated = mGated || mTrigger;
 
-    if (newState && !mWasActive)
+    if (gated && !mWasGated)
     {
-      // Auto: only reset envelope when starting from silence
-      // Manual: always reset on new activation
-      if (mMode == 1 || mAmp <= 0.f)
+      // Manual: always reset on new gate
+      // Auto/J106: only reset when armed (all voices were silent)
+      if (mMode == 1 || mArmed)
       {
         mAmp = 0.f;
+        mArmed = false;
         if (mModel != kJ106)
           RecalcDelayJ6();
         else
           RecalcDelay106();
       }
     }
+    // All models: arm reset when all voices go silent (output 0)
+    // Confirmed on J6 hardware; J60/J106 same behavior.
+    if (!gated && mWasGated)
+    {
+      mAmp = 0.f;
+      mArmed = true; // suppress ramp until next gate
+    }
 
+    mWasGated = gated;
     mWasActive = newState;
 
     mPos += freq;
     if (mPos >= 1.f)
       mPos -= 1.f;
 
-    if (newState && mAmp < 1.f)
+    if (newState && mAmp < 1.f && !mArmed)
     {
       if (mModel != kJ106)
       {

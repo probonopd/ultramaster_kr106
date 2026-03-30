@@ -354,9 +354,13 @@ public:
     for (int i = 0; i < nv; i++)
       if (mVoices[i]->GetBusy() && mVoiceAge[i] < oldestAge) { oldestAge = mVoiceAge[i]; scopeVoice = i; }
 
-    bool anyActive = false;
-    ForEachVoice([&](kr106::Voice<T>& v) { anyActive |= v.GetBusy(); });
-    mLFO.SetVoiceActive(anyActive);
+    bool anyBusy = false;
+    ForEachVoice([&](kr106::Voice<T>& v) { anyBusy |= v.GetBusy(); });
+    bool anyGated = false;
+    for (int i = 0; i < nv; i++) anyGated |= (mVoiceNote[i] >= 0);
+    // Unison mode: voices aren't tracked via mVoiceNote
+    if (mPortaMode == 0 && mUnisonNote >= 0) anyGated = true;
+    mLFO.SetVoiceActive(anyBusy, anyGated);
 
     for (int s = 0; s < nFrames; s++)
     {
