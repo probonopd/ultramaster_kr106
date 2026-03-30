@@ -838,6 +838,21 @@ private:
 
         g.setColour(bright);
         g.strokePath(vcfPath, juce::PathStrokeType(1.5f));
+
+        // Cutoff frequency readout (top-right corner)
+        {
+            juce::String hzStr;
+            if (fcSlider >= 1000.f)
+                hzStr = juce::String(fcSlider / 1000.f, 2) + " kHz";
+            else
+                hzStr = juce::String(juce::roundToInt(fcSlider)) + " Hz";
+
+            auto font = juce::Font(juce::FontOptions()
+                .withMetricsKind(juce::TypefaceMetricsKind::legacy)).withHeight(10.f);
+            g.setFont(font);
+            g.setColour(dim);
+            g.drawText(hzStr, 0, 1, w - 2, 12, juce::Justification::topRight);
+        }
     }
 
     // ---- Frequency counter (zero-crossing measurement) ----
