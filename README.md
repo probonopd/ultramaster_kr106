@@ -3,15 +3,20 @@
 [![Release](https://github.com/kayrockscreenprinting/ultramaster_kr106/actions/workflows/release.yml/badge.svg)](https://github.com/kayrockscreenprinting/ultramaster_kr106/actions/workflows/release.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
-A synthesizer plugin emulating the Roland Juno-106, built with [JUCE](https://juce.com/).
+A synthesizer plugin emulating the Roland Juno-6, Juno-60, and Juno-106, built with [JUCE](https://juce.com/).
 
-![KR-106 Screenshot](docs/screenshot.png)
+![KR-106 Screenshot](docs/website/screenshot.png)
 
-6-voice polyphonic with per-voice analog variance, TPT ladder filter with OTA saturation,
-BBD chorus emulation, arpeggiator, portamento/unison mode, and 211 factory presets.
+6-voice polyphonic with dual-mode DSP (Juno-60 analog / Juno-106 firmware), per-voice analog variance,
+TPT ladder filter with OTA saturation, ngspice-verified BBD chorus, arpeggiator with DAW sync,
+portamento, and 240 factory presets (112 Juno-60 + 128 Juno-106). Parameter curves calibrated from hardware
+measurements, circuit simulation, and firmware analysis.
 
 **Formats:** AU, VST3, LV2, CLAP, Standalone
 **Platforms:** macOS (10.15+), Windows, Linux
+
+**SysEx:** Full Juno-106 SysEx support (IPR/APR send and receive). A separate AU variant
+(aumf) is included for Logic Pro, which blocks SysEx on standard AU instruments.
 
 **[Download latest release](https://github.com/kayrockscreenprinting/ultramaster_kr106/releases/latest)**
 
@@ -77,7 +82,7 @@ Run `make help` for all available targets.
 Source/
   PluginProcessor.cpp/h        Audio processor, parameter setup, preset management
   PluginEditor.cpp/h           Custom GUI layout
-  KR106_Presets_JUCE.h         211 factory presets
+  KR106_Presets_JUCE.h         240 factory presets (112 J60 + 128 J106)
 
   Controls/
     KR106Knob.h                Bitmap rotary knob (sprite sheet)
@@ -91,17 +96,27 @@ Source/
 
   DSP/
     KR106_DSP.h                Top-level DSP orchestrator, HPF, signal routing
+    KR106_DSP_SetParam.h       Per-model parameter dispatch (J6/J60/J106 curves)
     KR106Voice.h               Per-voice: VCF, ADSR, oscillator mixing, portamento
-    KR106Oscillators.h         PolyBLEP saw, pulse, sub, noise generators
+    KR106OscillatorsWT.h       Bandlimited wavetable saw, pulse, sub
+    KR106VCF.h                 TPT SVF ladder filter with OTA saturation model
     KR106Chorus.h              MN3009 BBD chorus with Hermite interpolation
+    BBDFilter.h                Chorus pre/post filter (Butterworth biquad, ngspice-verified)
     KR106LFO.h                 Global triangle LFO with delay envelope
-    KR106Arpeggiator.h         Note sequencer (Up / Down / Up-Down)
+    KR106ADSR.h                Dual-mode ADSR (analog RC / firmware integer)
+    KR106Arpeggiator.h         Note sequencer with DAW sync (Up / Down / Up-Down)
+    KR106ParamValue.h          Unified parameter display (Hz, ms, dB, cents)
+    KR106VcfFreqJ6.h           J6/J60 VCF frequency curves (circuit models)
+    KR106VcfFreqJ106.h         J106 VCF frequency (firmware integer math)
 
 docs/
   DSP_ARCHITECTURE.md          Detailed DSP design documentation
   HOLD_ARP_FLOW.md             Hold + arpeggiator interaction flow
 
-tools/preset-gen/              Original patch files and conversion utilities
+tools/
+  preset-gen/                  Original patch files and conversion utilities
+  preset-midi/                 MIDI file generator for hardware A/B testing
+  render-midi/                 Offline MIDI renderer (headless DSP)
 ```
 
 ## Contributing
