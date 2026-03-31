@@ -45,6 +45,8 @@ ipch/
 resources/106rom/
 docs/manuals/
 docs/factory_preset_recordings/
+docs/datasheets/
+datasheets/
 
 # Website
 docs/website/makefile
