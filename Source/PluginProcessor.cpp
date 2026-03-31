@@ -555,6 +555,43 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
       // Emit MIDI for individual param changes (not preset load)
       if (!presetChange)
       {
+        // First edit after preset load: send 0x31 (manual mode) once
+        if (mPresetClean && mMidiOutSysEx && !isLivePerformanceParam(i))
+        {
+          mPresetClean = false;
+          // Build and send APR with 0x31 (manual mode, current params)
+          uint8_t apr[24];
+          apr[0] = 0xF0; apr[1] = 0x41; apr[2] = 0x31; apr[3] = 0x00;
+          apr[4] = 0x00; // no patch number in manual mode
+          for (int cc = 0; cc < 16; cc++)
+            apr[5 + cc] = static_cast<uint8_t>(juce::roundToInt(getParamValue(kSysExToParam[cc]) * 127.f));
+          {
+            int oct = juce::roundToInt(getParamValue(kOctTranspose));
+            uint8_t sw1 = 0;
+            if (oct == 2) sw1 |= 0x04;
+            else if (oct == 1) sw1 |= 0x02;
+            else sw1 |= 0x01;
+            if (getParamValue(kDcoPulse) > 0.5f) sw1 |= 0x08;
+            if (getParamValue(kDcoSaw) > 0.5f)   sw1 |= 0x10;
+            bool cI = getParamValue(kChorusI) > 0.5f;
+            bool cII = getParamValue(kChorusII) > 0.5f;
+            if (!cI && !cII) sw1 |= 0x20;
+            if (cI) sw1 |= 0x40;
+            apr[21] = sw1;
+          }
+          {
+            uint8_t sw2 = 0;
+            if (juce::roundToInt(getParamValue(kPwmMode)) != 0) sw2 |= 0x01;
+            if (getParamValue(kVcfEnvInv) > 0.5f) sw2 |= 0x02;
+            if (juce::roundToInt(getParamValue(kVcaMode)) != 0) sw2 |= 0x04;
+            int hpf = juce::roundToInt(getParamValue(kHpfFreq));
+            sw2 |= static_cast<uint8_t>((3 - hpf) << 3);
+            apr[22] = sw2;
+          }
+          apr[23] = 0xF7;
+          midiOut.addEvent(apr, 24, 0);
+        }
+
         if (mMidiOutSysEx)
         {
           // SysEx mode: IPR (Individual Parameter) messages
@@ -974,11 +1011,13 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
       apr[23] = 0xF7;
       midiOut.addEvent(apr, 24, 0);
+      mPresetClean = true;
     }
     else
     {
       // CC mode: Program Change for preset selection
       midiOut.addEvent(juce::MidiMessage::programChange(1, mCurrentPreset & 0x7F), 0);
+      mPresetClean = true;
     }
   }
 

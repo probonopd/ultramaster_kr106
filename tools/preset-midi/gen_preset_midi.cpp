@@ -85,8 +85,10 @@ static const int kSysExToPresetIdx[16] = {
     7,   // 0x0F = kDcoSub
 };
 
-// APR (All Parameter Report): F0 41 30 00 pp [16 sliders] [sw1] [sw2] F7
+// Manual mode parameter load: F0 41 31 00 pp [16 sliders] [sw1] [sw2] F7
 // Single 24-byte message instead of 18 individual IPR messages.
+// Uses 0x31 (manual mode) so the synth loads the parameters directly,
+// rather than 0x30 (patch recall) which just selects a stored preset.
 static void addAPR(std::vector<uint8_t>& track, uint32_t delta,
                    const int* presetValues, int patchNum)
 {
@@ -95,7 +97,7 @@ static void addAPR(std::vector<uint8_t>& track, uint32_t delta,
     writeVarLen(track, 23);  // 23 bytes after F0 including F7
 
     track.push_back(0x41);                                       // Roland ID
-    track.push_back(0x30);                                       // APR command
+    track.push_back(0x31);                                       // manual mode (load params)
     track.push_back(0x00);                                       // channel
     track.push_back(static_cast<uint8_t>(patchNum & 0x7F));      // patch number
 
