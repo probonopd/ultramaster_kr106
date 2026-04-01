@@ -86,6 +86,14 @@ public:
         if (mPBNavHover >= 0) { mPBNavHover = -1; repaint(); }
     }
 
+    // Stroke width that stays ~1.5 physical pixels regardless of UI scale
+    float strokeWidth() const
+    {
+        float scale = (mProcessor && mProcessor->mUIScale > 0.f)
+                        ? mProcessor->mUIScale : 1.f;
+        return 1.5f / scale;
+    }
+
     void paint(juce::Graphics& g) override
     {
         int w = getWidth();
@@ -395,7 +403,7 @@ private:
                 for (float px = 0.5f; px < w; px += 0.5f)
                     pathR.lineTo(px, interpY(mDisplayR, px));
                 g.setColour(dim);
-                g.strokePath(pathR, juce::PathStrokeType(1.5f));
+                g.strokePath(pathR, juce::PathStrokeType(strokeWidth(), juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
             }
 
             // L channel (bright, on top) + peak measurement
@@ -411,7 +419,7 @@ private:
                     peakL = std::max(peakL, fabsf(sample));
                 }
                 g.setColour(bright);
-                g.strokePath(pathL, juce::PathStrokeType(1.5f));
+                g.strokePath(pathL, juce::PathStrokeType(strokeWidth(), juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
             }
 
             // Peak amplitude readout (bottom-right corner)
@@ -517,7 +525,7 @@ private:
             specPath.lineTo(px, specYf(px));
 
         g.setColour(bright);
-        g.strokePath(specPath, juce::PathStrokeType(0.5f));
+        g.strokePath(specPath, juce::PathStrokeType(strokeWidth() * 0.67f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 
     // ---- ADSR envelope display (single continuous curve, dynamic zoom) ----
@@ -654,7 +662,7 @@ private:
                 envPath.lineTo(px, 1.f + (1.f - env) * (h - 3));
             }
             g.setColour(bright);
-            g.strokePath(envPath, juce::PathStrokeType(1.5f));
+            g.strokePath(envPath, juce::PathStrokeType(strokeWidth(), juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         }
         else
         {
@@ -723,7 +731,7 @@ private:
             for (float px = 0.5f; px < w; px += 0.5f)
                 envPath.lineTo(px, envAtPx(px));
             g.setColour(bright);
-            g.strokePath(envPath, juce::PathStrokeType(1.5f));
+            g.strokePath(envPath, juce::PathStrokeType(strokeWidth(), juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         }
     }
 
@@ -839,7 +847,7 @@ private:
             vcfPath.lineTo(px, dbToY(evalDb(px)));
 
         g.setColour(bright);
-        g.strokePath(vcfPath, juce::PathStrokeType(1.5f));
+        g.strokePath(vcfPath, juce::PathStrokeType(strokeWidth(), juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
         // Cutoff frequency readout (top-right corner)
         {
