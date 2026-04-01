@@ -168,6 +168,7 @@ private:
   // Flag: emit SysEx dump for current preset values on next processBlock
   std::atomic<bool> mSendPresetSysEx{false};
   bool mPresetClean = false; // true after preset load, cleared on first param edit
+  bool mPresetClean = false; // true after preset load, cleared on first param edit
 
   // SysEx switch byte decode helpers (shared by IPR and APR receive)
   void decodeSwitches1(uint8_t val);
