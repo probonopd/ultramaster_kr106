@@ -33,7 +33,7 @@ namespace KR106Theme
         if (active)
         {
             g.setColour(bright());
-            g.fillRect(x, y, w, h);
+            g.fillRect(x+1, y+1, w-1, h-1);
             g.setColour(bg());
         }
         else
@@ -41,7 +41,7 @@ namespace KR106Theme
             if (hover)
             {
                 g.setColour(hoverBg());
-                g.fillRect(x, y, w, h);
+                g.fillRect(x+1, y+1, w-1, h-1);
             }
             g.setColour(bright());
         }

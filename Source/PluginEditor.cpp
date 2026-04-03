@@ -192,6 +192,17 @@ KR106Editor::KR106Editor(KR106AudioProcessor& p)
     mTooltip.setVisible(false);
     mTooltip.setAlwaysOnTop(true);
 
+    // Allow host (Reaper, Logic, etc.) to offer drag-resize handles.
+    // Lock aspect ratio so the UI scales uniformly.
+    // Clamp max size to whichever is smaller: 200% or the current screen.
+    setResizable(true, false);
+    float maxScale = maxScaleForScreen();
+    int maxW = juce::roundToInt(kBaseWidth * maxScale);
+    int maxH = juce::roundToInt(kBaseHeight * maxScale);
+    setResizeLimits(kBaseWidth, kBaseHeight, maxW, maxH);
+    getConstrainer()->setFixedAspectRatio(
+        static_cast<double>(kBaseWidth) / kBaseHeight);
+
     // Apply initial scale via setSize (triggers resized -> mContent transform)
     applyScale(mUIScale);
 
@@ -205,17 +216,66 @@ KR106Editor::~KR106Editor()
 
 void KR106Editor::resized()
 {
-    float scale = static_cast<float>(getWidth()) / kBaseWidth;
+    float scale;
+
+    if (mInternalResize)
+    {
+        // We initiated this resize via applyScale — use our known scale
+        scale = mUIScale;
+    }
+    else
+    {
+        // Host-initiated resize (Logic drag-resize, window management, etc.)
+        // Derive scale from the new editor dimensions
+        scale = static_cast<float>(getWidth()) / kBaseWidth;
+
+        // Snap to nearest preset to avoid floating-point drift from
+        // host rounding (Logic/AU can round pixel dimensions)
+        for (float preset : { 1.f, 1.5f, 2.f })
+            if (std::abs(scale - preset) < 0.02f)
+                scale = preset;
+
+        mUIScale = scale;
+        mProcessor.mUIScale = scale;
+    }
+
     mContent.setTransform(juce::AffineTransform::scale(scale));
     mContent.setBounds(0, 0, kBaseWidth, kBaseHeight);
 }
 
 void KR106Editor::applyScale(float s)
 {
+    // Clamp so the window never exceeds the screen
+    s = juce::jmin(s, maxScaleForScreen());
+
     mUIScale = s;
     mProcessor.mUIScale = s;
+    mInternalResize = true;
     setSize(juce::roundToInt(kBaseWidth * s),
             juce::roundToInt(kBaseHeight * s));
+    mInternalResize = false;
+}
+
+float KR106Editor::maxScaleForScreen() const
+{
+    constexpr float kMaxZoom = 2.f;
+    constexpr float kScreenMargin = 0.9f; // use at most 90% of the screen
+
+    auto& displays = juce::Desktop::getInstance().getDisplays();
+    auto* display = displays.getDisplayForRect(getScreenBounds());
+
+    if (display == nullptr)
+        display = displays.getPrimaryDisplay();
+
+    if (display == nullptr)
+        return kMaxZoom;
+
+    // userArea is in logical points (excludes taskbar/dock)
+    auto area = display->userArea;
+    float maxByWidth  = (area.getWidth()  * kScreenMargin) / kBaseWidth;
+    float maxByHeight = (area.getHeight() * kScreenMargin) / kBaseHeight;
+
+    return juce::jmin(kMaxZoom, maxByWidth, maxByHeight);
 }
 
 void KR106Editor::mouseDown(const juce::MouseEvent& e)

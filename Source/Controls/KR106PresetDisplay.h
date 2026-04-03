@@ -304,7 +304,7 @@ private:
         if (!target) return;
 
         int sheetW = target->getWidth();
-        int sheetH = target->getHeight();
+        int sheetH = target->getHeight() - 8; // leave space for logic's resize grip
         int sheetY = 0;
 
         mSheet = std::make_unique<KR106PresetSheet>(mProcessor, mTypeface,

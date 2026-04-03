@@ -39,6 +39,7 @@ private:
 
     void timerCallback() override;
     void applyScale(float s);
+    float maxScaleForScreen() const;
 
     KR106AudioProcessor& mProcessor;
     juce::Image mBackground;
@@ -54,6 +55,7 @@ private:
     KR106Tooltip mTooltip;
 
     float mUIScale = 1.f;
+    bool mInternalResize = false; // guard: true when applyScale() initiated the resize
     bool mNeedChevronRestore = true;
     bool mWasActive = true;
     int mRepaintDivider = 0;
