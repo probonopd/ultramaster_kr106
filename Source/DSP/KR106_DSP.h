@@ -176,6 +176,7 @@ public:
     }
     std::fill(std::begin(mVoiceNote), std::end(mVoiceNote), -1);
     std::fill(std::begin(mVoiceAge), std::end(mVoiceAge), int64_t(0));
+    ResetVoiceTbl();
     mLFOBuffer.reserve(4096);
     mLFORawBuffer.reserve(4096);
     mSyncBuffer.reserve(4096);
@@ -227,17 +228,15 @@ public:
     }
   }
 
+  // Poly II allocator: simple linear search matching IC20 ROM at $0A76.
+  // Walks voices 0-5 looking for the first free voice (released or finished).
+  // Fixed priority: voice 0 always gets first pick.
+  // Returns -1 if all voices are active (no-steal policy, matches hardware).
   int FindLowestFreeVoice()
   {
     for (int i = 0; i < mActiveVoices; i++)
-      if (mVoiceNote[i] < 0 && mVoices[i]->GetBusy()) return i;
-    for (int i = 0; i < mActiveVoices; i++)
-      if (!mVoices[i]->GetBusy()) return i;
-    int oldest = 0;
-    int64_t oldestAge = mVoiceAge[0];
-    for (int i = 1; i < mActiveVoices; i++)
-      if (mVoiceAge[i] < oldestAge) { oldestAge = mVoiceAge[i]; oldest = i; }
-    return oldest;
+      if (mVoiceNote[i] < 0) return i;
+    return -1; // all voices active, note dropped (matches hardware)
   }
 
   int FindRoundRobinVoice()
@@ -258,6 +257,77 @@ public:
       if (mVoiceAge[i] < oldestAge) { oldestAge = mVoiceAge[i]; oldest = i; }
     mRoundRobinNext = (oldest + 1) % mActiveVoices;
     return oldest;
+  }
+
+  // Hardware-accurate voice allocator (Juno-106 IC20 Poly II algorithm).
+  // Uses bubble-sort priority table matching the actual ROM code at $0AAF/$0AF8.
+  int FindHardwareVoice(int note)
+  {
+    int nv = mActiveVoices;
+
+    // Step 1: Check capacity. If the last entry in voiceTbl is still playing
+    // (mVoiceNote >= 0), all voices are active — drop the note.
+    int lastVoice = mVoiceTbl[nv - 1];
+    if (mVoiceNote[lastVoice] >= 0)
+      return -1; // all voices active, note dropped
+
+    // Step 2: Search from back for restart candidate (same note, free).
+    // Walk backward through voiceTbl from the end (free voices are at back).
+    int restartPos = -1;
+    int firstFreePos = -1;
+    for (int pos = nv - 1; pos >= 0; pos--)
+    {
+      int vi = mVoiceTbl[pos];
+      if (mVoiceNote[vi] >= 0)
+      {
+        // Hit a playing voice — stop searching.
+        // The first free voice is the one just after this.
+        firstFreePos = pos + 1;
+        break;
+      }
+      // This voice is free. Check if it last played the same note.
+      if (mVoices[vi]->mMidiNote == note)
+        restartPos = pos;
+    }
+    // If all voices are free, firstFreePos is 0
+    if (firstFreePos < 0) firstFreePos = 0;
+
+    // Step 3: Pick the voice
+    int selectedPos = (restartPos >= 0) ? restartPos : firstFreePos;
+
+    // Step 4: Bubble selected voice to front (position 0).
+    // Swap with each adjacent entry above it, preserving order of others.
+    for (int pos = selectedPos; pos > 0; pos--)
+      std::swap(mVoiceTbl[pos], mVoiceTbl[pos - 1]);
+
+    return mVoiceTbl[0];
+  }
+
+  // Hardware-accurate NoteOff: bubble released voice to back of voiceTbl.
+  void HardwareNoteOff(int note)
+  {
+    int nv = mActiveVoices;
+
+    // Find the voice playing this note (walk from front)
+    int foundPos = -1;
+    for (int pos = 0; pos < nv; pos++)
+    {
+      int vi = mVoiceTbl[pos];
+      if (mVoiceNote[vi] == note)
+      {
+        foundPos = pos;
+        break;
+      }
+    }
+    if (foundPos < 0) return; // not found
+
+    int vi = mVoiceTbl[foundPos];
+    mVoices[vi]->Release();
+    mVoiceNote[vi] = -1;
+
+    // Bubble released voice to back of voiceTbl
+    for (int pos = foundPos; pos < nv - 1; pos++)
+      std::swap(mVoiceTbl[pos], mVoiceTbl[pos + 1]);
   }
 
   void TriggerVoice(int voiceIdx, int note, int velocity)
@@ -302,24 +372,28 @@ public:
     }
     else if (mPortaMode == 1)
     {
+      // Poly I: hardware bubble-sort allocator with restart candidate search
+      // and portamento. Matches IC20 ROM at $0AAF/$0AF8.
       if (noteOn)
       {
-        int vi = FindLowestFreeVoice();
+        int vi = FindHardwareVoice(note);
+        if (vi < 0) return; // all voices active, note dropped (matches hardware)
         if (mVoiceNote[vi] >= 0) mVoiceNote[vi] = -1;
         TriggerVoice(vi, note, velocity);
       }
       else
       {
-        int nv = static_cast<int>(NVoices());
-        for (int i = 0; i < nv; i++)
-          if (mVoiceNote[i] == note) { mVoices[i]->Release(); mVoiceNote[i] = -1; }
+        HardwareNoteOff(note);
       }
     }
     else
     {
+      // Poly II: simple linear search, fixed priority. Voice 0 always gets
+      // first pick. Matches IC20 ROM at $0A76/$0B30.
       if (noteOn)
       {
-        int vi = FindRoundRobinVoice();
+        int vi = FindLowestFreeVoice();
+        if (vi < 0) return; // all voices active, note dropped (matches hardware)
         if (mVoiceNote[vi] >= 0) mVoiceNote[vi] = -1;
         TriggerVoice(vi, note, velocity);
       }
@@ -451,6 +525,7 @@ public:
     mUnisonNote = -1;
     mUnisonStack.clear();
     mRoundRobinNext = 0;
+    ResetVoiceTbl();
     mHPF.mModel = mSynthModel;
     mHPF.SetSampleRate(mSampleRate);
     mHPF.Init();
@@ -514,7 +589,7 @@ public:
   int mKeyTranspose = 0;
   bool mHold = false;
   bool mTranspose = false;
-  int mPortaMode = 2;
+  int mPortaMode = 1; // Poly I (hardware default)
   int mUnisonNote = -1;
   std::vector<int> mUnisonStack;
   int mActiveVoices = 6;
@@ -524,6 +599,13 @@ public:
   int64_t mVoiceAge[kMaxVoices] = {};
   int64_t mVoiceAgeCounter = 0;
   int mRoundRobinNext = 0;
+
+  // Hardware-accurate voice priority table (mirrors IC20's voiceTbl).
+  // mVoiceTbl[0] = most recently triggered voice, mVoiceTbl[N-1] = longest idle.
+  // Free (released) voices accumulate at the back of the table.
+  int mVoiceTbl[kMaxVoices] = {0,1,2,3,4,5,6,7,8,9};
+
+  void ResetVoiceTbl() { for (int i = 0; i < kMaxVoices; i++) mVoiceTbl[i] = i; }
   bool mChorusI = false;
   bool mChorusII = false;
   kr106::Model mSynthModel = kr106::kJ106;
@@ -571,6 +653,7 @@ public:
     mHeldNotes.reset();
     ForEachVoice([](kr106::Voice<T>& v) { v.Release(); });
     std::fill(std::begin(mVoiceNote), std::end(mVoiceNote), -1);
+    ResetVoiceTbl();
     mUnisonNote = -1;
     mUnisonStack.clear();
   }
@@ -582,6 +665,7 @@ public:
     mHeldNotes.reset();
     ForEachVoice([](kr106::Voice<T>& v) { v.Release(); });
     std::fill(std::begin(mVoiceNote), std::end(mVoiceNote), -1);
+    ResetVoiceTbl();
     mUnisonNote = -1;
     mUnisonStack.clear();
   }
@@ -599,6 +683,7 @@ public:
     }
     mActiveVoices = n;
     if (mRoundRobinNext >= n) mRoundRobinNext = 0;
+    ResetVoiceTbl();
   }
 
   void ForceRelease(int noteNum)

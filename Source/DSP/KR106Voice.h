@@ -904,12 +904,12 @@ public:
         oscOut += static_cast<float>(noiseBuffer[i]) * kNoiseAmp * noiseAT;
       float signal = mVCF.Process(oscOut, vcfCPS, mVcfRes);
 
-      // --- VCA (BA662 + TR17 exponential converter) ---
+      // --- VCA (BA662 OTA, driven by model-specific exponential converter) ---
       float vcaOut;
       if (mVcaMode)
-        vcaOut = signal * kr106::VCAGain(mADSR.mGateEnv) * velocity * mVcaGainScale; // Gate mode
+        vcaOut = signal * kr106::VCAGain(mADSR.mGateEnv, mModel) * velocity * mVcaGainScale; // Gate mode
       else
-        vcaOut = signal * kr106::VCAGain(env) * velocity * mVcaGainScale; // ADSR mode
+        vcaOut = signal * kr106::VCAGain(env, mModel) * velocity * mVcaGainScale; // ADSR mode
 
       // Accumulate mono (chorus does stereo later)
       outputs[0][i] += static_cast<T>(vcaOut);

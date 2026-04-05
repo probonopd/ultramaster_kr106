@@ -364,7 +364,7 @@ KR106AudioProcessor::KR106AudioProcessor()
   addSlider(kBender,       "Bender",      0.f, -1.f, 1.f);
   addSlider(kTuning,       "Tuning",      0.f, -1.f, 1.f, fmtTuning, parseTuning);
   addBool(kPower,          "Power",       true);
-  addSwitch(kPortaMode,    "Porta Mode",  2, 0, 2);
+  addSwitch(kPortaMode,    "Porta Mode",  1, 0, 2); // default Poly I (hardware default)
   addSlider(kPortaRate,    "Porta Rate",  0.f, 0.f, 1.f, fmtPorta, parsePorta);
   addSwitch(kTransposeOffset, "Transpose Offset", 0, -24, 36);
 

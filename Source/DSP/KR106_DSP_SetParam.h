@@ -312,8 +312,8 @@ void KR106DSP<T>::SetParam(int paramIdx, double value)
       mPortaMode = static_cast<int>(value);
       if (mSuppressHoldRelease)
       {
-        bool portaOn = (mPortaMode <= 1);
-        ForEachVoice([portaOn](kr106::Voice<T>& v) { v.mPortaEnabled = portaOn; });
+        // All three modes support portamento (matches real Juno-106)
+        ForEachVoice([](kr106::Voice<T>& v) { v.mPortaEnabled = true; });
         break;
       }
       bool prevPoly = (prevMode >= 1);
