@@ -9,7 +9,7 @@
 #ifdef NDEBUG
   #define KR106_DEBUG 0
 #else
-  #define KR106_DEBUG 1
+  #define KR106_DEBUG 0
 #endif
 #if KR106_DEBUG
 static void dbgLog(const juce::String& msg)
@@ -19,6 +19,17 @@ static void dbgLog(const juce::String& msg)
 }
 #else
 static void dbgLog(const juce::String&) {}
+#endif
+
+#define KR106_DEBUG_TRANSPORT 1
+#if KR106_DEBUG_TRANSPORT
+static void dbgTransport(const juce::String& msg)
+{
+  auto f = KR106PresetManager::getAppDataDir().getChildFile("transport.log");
+  f.appendText(juce::Time::getCurrentTime().toString(true, true, true, true) + "  " + msg + "\n");
+}
+#else
+static void dbgTransport(const juce::String&) {}
 #endif
 
 static bool isLivePerformanceParam(int idx)
@@ -889,9 +900,18 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
       if (auto pos = ph->getPosition())
       {
         // Fresh transport data from host -- update cache
+        bool prevPlaying = mCachedPlaying;
+        bool prevHaveBPM = mCachedHaveBPM;
         mCachedPlaying = pos->getIsPlaying();
         if (auto b = pos->getBpm())         { mCachedBPM = *b; mCachedHaveBPM = true; }
         if (auto p = pos->getPpqPosition()) { mCachedPPQ = *p; mCachedHavePPQ = true; }
+        // Log only on state changes
+        if (mCachedPlaying != prevPlaying || mCachedHaveBPM != prevHaveBPM)
+          dbgTransport("pos: playing=" + juce::String(mCachedPlaying ? 1 : 0)
+                     + " bpm=" + juce::String(mCachedBPM, 1)
+                     + " ppq=" + juce::String(mCachedPPQ, 3)
+                     + " haveBPM=" + juce::String(mCachedHaveBPM ? 1 : 0)
+                     + " havePPQ=" + juce::String(mCachedHavePPQ ? 1 : 0));
       }
       else if (mCachedPlaying && mCachedHaveBPM)
       {
@@ -900,19 +920,28 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         mCachedPPQ += beatsPerSample * nFrames;
       }
     }
+    else
+    {
+      static bool sLoggedNoPlayHead = false;
+      if (!sLoggedNoPlayHead)
+      {
+        dbgTransport("no playHead");
+        sLoggedNoPlayHead = true;
+      }
+    }
 
     if (mArpSyncHost)
     {
-      mDSP.mArp.mSyncToHost = mCachedHaveBPM;
-      mDSP.mArp.mHostPlaying = mCachedPlaying && mCachedHavePPQ;
-      mDSP.mArp.mHostBPM = mCachedBPM;
+      mDSP.mArp.mSyncToHost = true;
+      mDSP.mArp.mHostPlaying = mCachedHavePPQ ? mCachedPlaying : true;
+      mDSP.mArp.mHostBPM = mCachedHaveBPM ? mCachedBPM : 120.0;
       mDSP.mArp.mHostBeatPos = mCachedPPQ;
     }
     if (mLfoSyncHost)
     {
-      mDSP.mLFO.mSyncToHost = mCachedHaveBPM;
-      mDSP.mLFO.mHostPlaying = mCachedPlaying;
-      mDSP.mLFO.mHostBPM = mCachedBPM;
+      mDSP.mLFO.mSyncToHost = true;
+      mDSP.mLFO.mHostPlaying = mCachedHavePPQ ? mCachedPlaying : true;
+      mDSP.mLFO.mHostBPM = mCachedHaveBPM ? mCachedBPM : 120.0;
     }
   }
 

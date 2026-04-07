@@ -2,6 +2,18 @@
 #include "BinaryData.h"
 #include "Controls/KR106QwertyDiagram.h"
 
+#define KR106_DEBUG_RESIZE 0
+#if KR106_DEBUG_RESIZE
+#include "KR106PresetManager.h"
+static void dbgResize(const juce::String& msg)
+{
+    auto f = KR106PresetManager::getAppDataDir().getChildFile("resize.log");
+    f.appendText(juce::Time::getCurrentTime().toString(true, true, true, true) + "  " + msg + "\n");
+}
+#else
+static void dbgResize(const juce::String&) {}
+#endif
+
 KR106Editor::KR106Editor(KR106AudioProcessor& p)
     : AudioProcessorEditor(p), mProcessor(p)
 {
@@ -194,12 +206,8 @@ KR106Editor::KR106Editor(KR106AudioProcessor& p)
 
     // Allow host (Reaper, Logic, etc.) to offer drag-resize handles.
     // Lock aspect ratio so the UI scales uniformly.
-    // Clamp max size to whichever is smaller: 200% or the current screen.
     setResizable(true, false);
-    float maxScale = maxScaleForScreen();
-    int maxW = juce::roundToInt(kBaseWidth * maxScale);
-    int maxH = juce::roundToInt(kBaseHeight * maxScale);
-    setResizeLimits(kBaseWidth, kBaseHeight, maxW, maxH);
+    setResizeLimits(kBaseWidth, kBaseHeight, kBaseWidth * 4, kBaseHeight * 4);
     getConstrainer()->setFixedAspectRatio(
         static_cast<double>(kBaseWidth) / kBaseHeight);
 
@@ -222,6 +230,8 @@ void KR106Editor::resized()
     {
         // We initiated this resize via applyScale — use our known scale
         scale = mUIScale;
+        dbgResize("internal: " + juce::String(getWidth()) + "x" + juce::String(getHeight())
+                + " scale=" + juce::String(scale, 2));
     }
     else
     {
@@ -237,6 +247,8 @@ void KR106Editor::resized()
 
         mUIScale = scale;
         mProcessor.mUIScale = scale;
+        dbgResize("host: " + juce::String(getWidth()) + "x" + juce::String(getHeight())
+                + " scale=" + juce::String(scale, 2));
     }
 
     mContent.setTransform(juce::AffineTransform::scale(scale));
@@ -245,9 +257,6 @@ void KR106Editor::resized()
 
 void KR106Editor::applyScale(float s)
 {
-    // Clamp so the window never exceeds the screen
-    s = juce::jmin(s, maxScaleForScreen());
-
     mUIScale = s;
     mProcessor.mUIScale = s;
     mInternalResize = true;
@@ -256,27 +265,6 @@ void KR106Editor::applyScale(float s)
     mInternalResize = false;
 }
 
-float KR106Editor::maxScaleForScreen() const
-{
-    constexpr float kMaxZoom = 3.f;
-    constexpr float kScreenMargin = 0.9f; // use at most 90% of the screen
-
-    auto& displays = juce::Desktop::getInstance().getDisplays();
-    auto* display = displays.getDisplayForRect(getScreenBounds());
-
-    if (display == nullptr)
-        display = displays.getPrimaryDisplay();
-
-    if (display == nullptr)
-        return kMaxZoom;
-
-    // userArea is in logical points (excludes taskbar/dock)
-    auto area = display->userArea;
-    float maxByWidth  = (area.getWidth()  * kScreenMargin) / kBaseWidth;
-    float maxByHeight = (area.getHeight() * kScreenMargin) / kBaseHeight;
-
-    return juce::jmin(kMaxZoom, maxByWidth, maxByHeight);
-}
 
 void KR106Editor::mouseDown(const juce::MouseEvent& e)
 {

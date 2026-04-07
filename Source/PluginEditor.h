@@ -39,7 +39,6 @@ private:
 
     void timerCallback() override;
     void applyScale(float s);
-    float maxScaleForScreen() const;
 
     KR106AudioProcessor& mProcessor;
     juce::Image mBackground;
