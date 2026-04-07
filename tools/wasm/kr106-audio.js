@@ -1,7 +1,7 @@
 // KR-106 Web Audio loader
 //
-// Loads the Emscripten WASM module on the main thread and processes
-// audio via ScriptProcessorNode. Simple and compatible.
+// Tries AudioWorklet first (glitch-free, separate thread), falls back to
+// ScriptProcessorNode (main thread, may glitch under load).
 //
 // Usage:
 //   const synth = new KR106Audio();
@@ -21,13 +21,51 @@ class KR106Audio {
     this.ready = false;
     this.ptrL = 0;
     this.ptrR = 0;
+    this._useWorklet = false;
+    this._presetNames = {};
   }
 
   async init() {
     this.ctx = new AudioContext();
     const sr = this.ctx.sampleRate;
 
-    // Load Emscripten module
+    // Try AudioWorklet first
+    try {
+      await this.ctx.audioWorklet.addModule('kr106-processor.js');
+      this.node = new AudioWorkletNode(this.ctx, 'kr106-processor', {
+        outputChannelCount: [2]
+      });
+
+      // Wait for WASM to initialize inside the worklet
+      await new Promise((resolve, reject) => {
+        this.node.port.onmessage = (e) => {
+          if (e.data.type === 'ready') resolve();
+          else if (e.data.type === 'error') reject(new Error(e.data.message));
+          else if (e.data.type === 'presetName') {
+            this._presetNames[e.data.index] = e.data.name;
+          }
+          else if (e.data.type === 'scope') {
+            this._scopeData = e.data;
+          }
+        };
+        // Tell the worklet to load WASM (relative URL for the glue JS)
+        this.node.port.postMessage({ type: 'init', wasmUrl: 'dist/kr106_dsp.js' });
+      });
+
+      this.node.connect(this.ctx.destination);
+      this._useWorklet = true;
+      this.ready = true;
+
+      // Pre-fetch preset names (worklet has them, main thread needs them for UI)
+      this._fetchPresetNames();
+
+      console.log('KR-106 ready (AudioWorklet): ' + sr + ' Hz');
+      return;
+    } catch (err) {
+      console.warn('AudioWorklet failed, falling back to ScriptProcessor:', err.message);
+    }
+
+    // Fallback: ScriptProcessorNode on main thread
     const script = document.createElement('script');
     script.src = 'dist/kr106_dsp.js';
     await new Promise((resolve, reject) => {
@@ -39,23 +77,12 @@ class KR106Audio {
     this.mod = await createKR106();
     this.dsp = this.mod._kr106_create(sr);
 
-    // Pre-allocate WASM heap buffers (max 4096 frames for adaptive sizing)
     const maxFrames = 4096;
     this.ptrL = this.mod._malloc(maxFrames * 4);
     this.ptrR = this.mod._malloc(maxFrames * 4);
 
-    // Adaptive buffer: start at 1024, grow on underruns, up to 4096
-    this._bufferSize = 1024;
-    this._underrunCount = 0;
-    this._lastCallbackTime = 0;
-    this._createNode();
-    this.ready = true;
-    console.log('KR-106 ready: ' + sr + ' Hz, buffer=' + this._bufferSize);
-  }
-
-  _createNode() {
-    if (this.node) { this.node.disconnect(); this.node = null; }
-    this.node = this.ctx.createScriptProcessor(this._bufferSize, 0, 2);
+    const bufferSize = 2048;
+    this.node = this.ctx.createScriptProcessor(bufferSize, 0, 2);
     const self = this;
     this.node.onaudioprocess = (e) => {
       const outL = e.outputBuffer.getChannelData(0);
@@ -69,89 +96,142 @@ class KR106Audio {
       const offR = self.ptrR >> 2;
       outL.set(heap.subarray(offL, offL + n));
       outR.set(heap.subarray(offR, offR + n));
-
-      // Detect underruns: if the gap between callbacks is > 2x expected, count it
-      const now = performance.now();
-      const expectedMs = (self._bufferSize / self.ctx.sampleRate) * 1000;
-      if (self._lastCallbackTime > 0) {
-        const gap = now - self._lastCallbackTime;
-        if (gap > expectedMs * 2) {
-          self._underrunCount++;
-          if (self._underrunCount >= 3 && self._bufferSize < 4096) {
-            self._bufferSize *= 2;
-            self._underrunCount = 0;
-            console.log('KR-106: buffer underrun, increasing to ' + self._bufferSize);
-            setTimeout(() => self._createNode(), 0);
-          }
-        }
-      }
-      self._lastCallbackTime = now;
     };
+
     this.node.connect(this.ctx.destination);
+    this._useWorklet = false;
+    this.ready = true;
+    console.log('KR-106 ready (ScriptProcessor): ' + sr + ' Hz');
+  }
+
+  _fetchPresetNames() {
+    // Request all preset names from the worklet
+    const n = 256; // max presets
+    for (let i = 0; i < n; i++) {
+      this.node.port.postMessage({ type: 'preset-name-query', index: i });
+    }
   }
 
   noteOn(note, velocity = 127) {
-    if (this.ready) this.mod._kr106_note_on(this.dsp, note, velocity);
+    if (!this.ready) return;
+    if (this._useWorklet) {
+      this.node.port.postMessage({ type: 'midi', data: [0x90, note, velocity] });
+    } else {
+      this.mod._kr106_note_on(this.dsp, note, velocity);
+    }
   }
 
   noteOff(note) {
-    if (this.ready) this.mod._kr106_note_off(this.dsp, note);
+    if (!this.ready) return;
+    if (this._useWorklet) {
+      this.node.port.postMessage({ type: 'midi', data: [0x80, note, 0] });
+    } else {
+      this.mod._kr106_note_off(this.dsp, note);
+    }
   }
 
   forceRelease(note) {
-    if (this.ready) this.mod._kr106_force_release(this.dsp, note);
+    if (!this.ready) return;
+    if (this._useWorklet) {
+      this.node.port.postMessage({ type: 'midi', data: [0x80, note, 0] });
+    } else {
+      this.mod._kr106_force_release(this.dsp, note);
+    }
   }
 
   controlChange(cc, value) {
-    if (this.ready) this.mod._kr106_control_change(this.dsp, cc, value);
+    if (!this.ready) return;
+    if (this._useWorklet) {
+      this.node.port.postMessage({ type: 'midi', data: [0xB0, cc, Math.round(value * 127)] });
+    } else {
+      this.mod._kr106_control_change(this.dsp, cc, value);
+    }
   }
 
   setParam(index, value) {
-    if (this.ready) this.mod._kr106_set_param(this.dsp, index, value);
+    if (!this.ready) return;
+    if (this._useWorklet) {
+      this.node.port.postMessage({ type: 'param', index, value });
+    } else {
+      this.mod._kr106_set_param(this.dsp, index, value);
+    }
   }
 
   loadPreset(index) {
-    if (this.ready) this.mod._kr106_load_preset(this.dsp, index);
+    if (!this.ready) return;
+    if (this._useWorklet) {
+      this.node.port.postMessage({ type: 'preset', index });
+    } else {
+      this.mod._kr106_load_preset(this.dsp, index);
+    }
   }
 
   setBankOffset(offset) {
-    if (this.mod && this.mod._kr106_set_bank_offset) this.mod._kr106_set_bank_offset(offset);
+    if (this._useWorklet) {
+      this.node.port.postMessage({ type: 'param', index: -1, value: offset }); // handled specially
+    } else if (this.mod && this.mod._kr106_set_bank_offset) {
+      this.mod._kr106_set_bank_offset(offset);
+    }
   }
 
   getPresetName(index) {
+    if (this._useWorklet) {
+      return this._presetNames[index] || '';
+    }
     if (!this.mod) return '';
     const ptr = this.mod._kr106_get_preset_name(index);
     return this.mod.UTF8ToString(ptr);
   }
 
   getNumPresets() {
+    if (this._useWorklet) return 256;
     if (!this.mod) return 0;
     return this.mod._kr106_get_num_presets();
   }
 
   getPresetValue(presetIdx, paramIdx) {
+    if (this._useWorklet) return 0; // not available from worklet
     if (!this.mod) return 0;
     return this.mod._kr106_get_preset_value(presetIdx, paramIdx);
   }
 
   getVcfSlider() {
+    if (this._useWorklet) return 0;
     return this.ready ? this.mod._kr106_get_vcf_slider(this.dsp) : 0;
   }
 
   getHpfSlider() {
+    if (this._useWorklet) return 0;
     return this.ready ? this.mod._kr106_get_hpf_slider(this.dsp) : 0;
   }
 
   setVoices(n) {
-    if (this.ready) this.mod._kr106_set_voices(this.dsp, n);
+    if (!this.ready) return;
+    if (this._useWorklet) {
+      this.node.port.postMessage({ type: 'voices', count: n });
+    } else {
+      this.mod._kr106_set_voices(this.dsp, n);
+    }
   }
 
   setIgnoreVelocity(b) {
-    if (this.ready) this.mod._kr106_set_ignore_velocity(this.dsp, b ? 1 : 0);
+    if (!this.ready) return;
+    if (this._useWorklet) {
+      this.node.port.postMessage({ type: 'ignoreVel', value: b ? 1 : 0 });
+    } else {
+      this.mod._kr106_set_ignore_velocity(this.dsp, b ? 1 : 0);
+    }
   }
 
-  getScopeData(outArray) {
-    if (!this.mod) return 0;
+  getScopeData() {
+    if (this._useWorklet) {
+      // Scope data comes via postMessage from worklet
+      if (!this._scopeData) return null;
+      const sd = this._scopeData;
+      this._scopeData = null;
+      return sd;
+    }
+    if (!this.mod) return null;
     const ringPtr = this.mod._kr106_get_scope_ring();
     const ringRPtr = this.mod._kr106_get_scope_ring_r();
     const syncPtr = this.mod._kr106_get_scope_sync_ring();

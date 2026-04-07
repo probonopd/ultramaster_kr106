@@ -30,26 +30,39 @@ const SC={x:790,y:7,w:128,h:74};
 
 function updateScopeData(){
 if(!synth.ready)return;
-const sd=synth.getScopeData();if(!sd||!sd.heap)return;
-const{heap,ringOff,ringROff,syncOff,writePos,ringSize}=sd;
+const sd=synth.getScopeData();if(!sd)return;
 
-// Double-buffer: writePos is the front buffer length (0 = no new data)
-if(writePos===0)return;
-const len=writePos;
+// Two formats: worklet sends {ringL, ringR, sync, writePos}
+//              ScriptProcessor sends {heap, ringOff, ringROff, syncOff, writePos}
+let len, srcL, srcR, srcS;
+if(sd.ringL){
+  // AudioWorklet: pre-copied arrays (no race condition)
+  len=sd.writePos;
+  srcL=sd.ringL; srcR=sd.ringR; srcS=sd.sync;
+}else if(sd.heap){
+  // ScriptProcessor: read from WASM heap
+  if(sd.writePos===0)return;
+  len=sd.writePos;
+  srcL={get:(i)=>sd.heap[sd.ringOff+i]};
+  srcR={get:(i)=>sd.heap[sd.ringROff+i]};
+  srcS={get:(i)=>sd.heap[sd.syncOff+i]};
+  // Use array-like access below
+}else return;
 
-// Copy entire front buffer into local arrays (no race -- audio writes to back buffer)
+if(len===0)return;
+
 let peak=0;
 for(let i=0;i<len;i++){
-  const s=heap[ringOff+i];
+  const s=srcL[i]!==undefined?srcL[i]:srcL.get(i);
   if(Math.abs(s)>peak)peak=Math.abs(s);
   scopeRing[i]=s;
-  scopeRingR[i]=heap[ringROff+i];
-  scopeSyncRing[i]=heap[syncOff+i]}
+  scopeRingR[i]=srcR[i]!==undefined?srcR[i]:srcR.get(i);
+  scopeSyncRing[i]=srcS[i]!==undefined?srcS[i]:srcS.get(i)}
 scopeRingWP=len;
 scopeSamplesAvail=len;
 
-// Signal that we consumed the front buffer
-if(synth.mod&&synth.mod._kr106_scope_consumed)synth.mod._kr106_scope_consumed();
+// Signal consumed (ScriptProcessor double-buffer only)
+if(!sd.ringL&&synth.mod&&synth.mod._kr106_scope_consumed)synth.mod._kr106_scope_consumed();
 
 if(peak<1e-6){scopeHasData=false;return}
 
