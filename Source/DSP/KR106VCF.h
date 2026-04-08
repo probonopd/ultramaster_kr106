@@ -289,7 +289,7 @@ struct VCF
   // the input, counteracting passband volume drop.
   static float InputComp(float k)
   {
-      return 0.252f + 0.058f * k;
+      return 0.379f + 0.087f * k;
   }
 
   static constexpr float kOTAScale = 0.35f;
@@ -478,13 +478,12 @@ private:
     for (auto& st : mS)
       if (fabsf(st) < 1e-15f) st = 0.f;
 
-    // Output gain: InputComp scales the input to ~0.25 at k=0 so that
-    // passband signals stay in the OTA linear region (matching the Juno's
-    // low-level noise/oscillator drive). Self-oscillation amplitude is set
-    // by kFbScale and is independent of input scaling. This gain restores
-    // self-oscillation to ±0.5 (1V peak-to-peak), matching the voice
-    // signal levels expected downstream by the VCA and chorus stages.
-    return lp4 * 4.85f;
+    // Output gain: InputComp scales the input to ~0.38 at k=0 so that
+    // passband signals stay in the OTA linear region. Self-oscillation
+    // amplitude is set by kFbScale and is independent of input scaling.
+    // InputComp * outputGain preserves passband level (1.22x).
+    // Self-osc level calibrated from hardware: ~1.07x pulse at R=127.
+    return lp4 * 3.22f;
   }
 };
 

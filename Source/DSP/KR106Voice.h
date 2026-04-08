@@ -550,11 +550,29 @@ public:
     return dcoSubLevel_j6(t);
   }
 
-  // dcoSubLevel_j106() - J106 sub level: no ROM table, straight DAC output.
-  // Same transistor shunt circuit as J60.
+  // dcoSubLevel_j106() - J106 sub level from hardware measurement.
+  // DAC drives transistor shunt (same topology as J60 but with 12-bit DAC).
+  // Much more linear than J6's A-taper pot: no dead zone, smooth ramp.
+  // Calibrated from osc_calibrate recording (RMS normalized to max).
   static float dcoSubLevel_j106(float t)
   {
-    return dcoSubLevel_j6(t);
+    static constexpr float kTable[11] = {
+      0.00154f,   // 0: -56.3 dB
+      0.01251f,   // 1: -38.1 dB
+      0.10875f,   // 2: -19.3 dB
+      0.22125f,   // 3: -13.1 dB
+      0.33576f,   // 4: -9.5 dB
+      0.45206f,   // 5: -6.9 dB
+      0.55750f,   // 6: -5.1 dB
+      0.67178f,   // 7: -3.5 dB
+      0.78447f,   // 8: -2.1 dB
+      0.91132f,   // 9: -0.8 dB
+      1.00000f    // 10: 0 dB
+    };
+    float idx = t * 10.f;
+    int i0 = std::min(static_cast<int>(idx), 9);
+    float frac = idx - i0;
+    return kTable[i0] + frac * (kTable[i0 + 1] - kTable[i0]);
   }
 
   // dcoNoiseLevel_j6() - Maps Juno-6 DCO Noise slider (0..1) to linear gain.

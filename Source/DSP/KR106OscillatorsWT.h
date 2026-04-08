@@ -16,10 +16,11 @@ static constexpr float kNoiseAmpJ6  = 1.f;       // Noise level (J6 calibration)
 // J106: MC5534 pre-mixed saw/pulse, separate sub and noise mixing resistors.
 // Calibrated from hardware 106_calibration recording (peak-to-peak matched
 // to noise RMS at HPF flat, VCF wide open).
-// Sub/Saw ratio: 1.59x (+4.0 dB), matches 27K/39K mixing resistor ratio.
+// Sub/pulse ratio: 1.51x from osc_calibrate recording (both square waves,
+// ratio is recording-gain-independent).
 static constexpr float kSawAmpJ106   = 0.5f;     // scaled to match J6 saw level
 static constexpr float kPulseAmpJ106 = 0.417f;   // 0.834x saw (hardware measurement)
-static constexpr float kSubAmpJ106   = 0.586f;   // 1.17x saw (+4.0 dB, 27K mixing R)
+static constexpr float kSubAmpJ106   = 0.630f;   // 1.51x pulse, +5.3 dB vs saw (hardware cal)
 static constexpr float kNoiseAmpJ106 = 1.385f;   // 2.77x saw (39K mixing R, hardware cal)
 
 static constexpr float kSwitchRamp = 1.f / 64.f; // ~1.5ms at 44.1k

@@ -262,7 +262,7 @@ struct VCF
   // the input, counteracting passband volume drop.
   static float InputComp(float k)
   {
-    return 0.252f + 0.058f * k;
+    return 0.379f + 0.087f * k;
   }
 
   static constexpr float kOTAScale = 0.35f;
@@ -439,9 +439,9 @@ private:
     float lp3 = NLStage(mS[2], lp2, gNL, g1NL);
     float lp4 = NLStage(mS[3], lp3, gNL, g1NL);
 
-    // Output gain: restores self-oscillation to ±0.5 (1Vpp) at
-    // the VCA/chorus input.
-    return lp4 * 4.85f;
+    // Output gain: InputComp * outputGain preserves passband level (1.22x).
+    // Self-osc level calibrated from hardware: ~1.07x pulse at R=127.
+    return lp4 * 3.22f;
   }
 };
 
