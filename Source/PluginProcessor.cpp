@@ -54,7 +54,7 @@ static bool sExcludeMaskInit = []() {
 // MIDI CC → EParams mapping (-1 = unmapped)
 static constexpr int kCCtoParam[128] = {
   -1, -1, -1, kDcoLfo, -1, kPortaRate, -1, kMasterVol,  // CC 0-7
-  -1, kDcoSub, -1, -1, kHpfFreq, kDcoNoise, -1, -1,       // CC 8-15
+  -1, kDcoSub, -1, kVcaLevel, kHpfFreq, kDcoNoise, -1, -1, // CC 8-15
   -1, -1, -1, -1, -1, -1, -1, -1,                       // CC 16-23
   -1, -1, -1, -1, -1, -1, -1, -1,                       // CC 24-31
   -1, -1, -1, -1, -1, -1, -1, -1,                       // CC 32-39
@@ -361,21 +361,30 @@ KR106AudioProcessor::KR106AudioProcessor()
   addBool(kChorusI,      "Chorus I",    true);
   addBool(kChorusII,     "Chorus II",   false);
 
-  // Switches
-  addSwitch(kOctTranspose, "Octave",      1, 0, 2);
-  addSwitch(kArpMode,      "Arp Mode",    0, 0, 2);
-  addSwitch(kArpRange,     "Arp Range",   0, 0, 2);
-  addSwitch(kLfoMode,      "LFO Mode",    0, 0, 1);
-  addSwitch(kPwmMode,      "PWM Mode",    1, 0, 2);
-  addSwitch(kVcfEnvInv,    "VCF Env Inv", 0, 0, 1);
-  addSwitch(kVcaMode,      "VCA Mode",    1, 0, 1);
-  addSwitch(kAdsrMode,     "ADSR Mode",   1, 0, 1);
+  // Switches (with text labels for tooltips)
+  addSwitch(kOctTranspose, "Octave",      1, 0, 2,
+    [](int v, int) -> juce::String { const char* s[] = {"16'","8'","4'"}; return s[juce::jlimit(0,2,v)]; });
+  addSwitch(kArpMode,      "Arp Mode",    0, 0, 2,
+    [](int v, int) -> juce::String { const char* s[] = {"Up","Up/Down","Down"}; return s[juce::jlimit(0,2,v)]; });
+  addSwitch(kArpRange,     "Arp Range",   0, 0, 2,
+    [](int v, int) -> juce::String { const char* s[] = {"1 Oct","2 Oct","3 Oct"}; return s[juce::jlimit(0,2,v)]; });
+  addSwitch(kLfoMode,      "LFO Mode",    0, 0, 1,
+    [](int v, int) -> juce::String { return v == 0 ? "Auto" : "Manual"; });
+  addSwitch(kPwmMode,      "PWM Mode",    1, 0, 2,
+    [](int v, int) -> juce::String { const char* s[] = {"LFO","Manual","Env"}; return s[juce::jlimit(0,2,v)]; });
+  addSwitch(kVcfEnvInv,    "VCF Env Inv", 0, 0, 1,
+    [](int v, int) -> juce::String { return v == 0 ? "Normal" : "Inverted"; });
+  addSwitch(kVcaMode,      "VCA Mode",    1, 0, 1,
+    [](int v, int) -> juce::String { return v == 0 ? "Env" : "Gate"; });
+  addSwitch(kAdsrMode,     "ADSR Mode",   1, 0, 1,
+    [](int v, int) -> juce::String { return v == 0 ? "J60" : "J106"; });
 
   // Special controls
   addSlider(kBender,       "Bender",      0.f, -1.f, 1.f);
   addSlider(kTuning,       "Tuning",      0.f, -1.f, 1.f, fmtTuning, parseTuning);
   addBool(kPower,          "Power",       true);
-  addSwitch(kPortaMode,    "Porta Mode",  1, 0, 2); // default Poly I (hardware default)
+  addSwitch(kPortaMode,    "Porta Mode",  1, 0, 2,
+    [](int v, int) -> juce::String { const char* s[] = {"Mono","Poly I","Poly II"}; return s[juce::jlimit(0,2,v)]; });
   addSlider(kPortaRate,    "Porta Rate",  0.f, 0.f, 1.f, fmtPorta, parsePorta);
   addSwitch(kTransposeOffset, "Transpose Offset", 0, -24, 36);
 
@@ -767,10 +776,17 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         mDSP.AllNotesOff();
         mKeyboardHeld.reset();
       }
-      else if (cc == 64) // sustain pedal → toggle Hold
+      else if (cc == 64) // sustain pedal -> Hold
       {
         bool pedalDown = msg.getControllerValue() >= 64;
         mParams[kHold]->setValueNotifyingHost(pedalDown ? 1.0f : 0.0f);
+      }
+      else if (cc == 65) // portamento on/off
+      {
+        bool on = msg.getControllerValue() >= 64;
+        float mode = on ? 1.0f : 0.0f; // 0=off, 1=on
+        mParams[kPortaMode]->setValueNotifyingHost(
+            mParams[kPortaMode]->convertTo0to1(mode));
       }
       else if (cc == 1)
       {

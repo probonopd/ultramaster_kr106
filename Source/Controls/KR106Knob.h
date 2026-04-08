@@ -94,13 +94,12 @@ public:
             return;
         }
         if (e.mods.isPopupMenu()) return;
-        // Left click cancels MIDI learn if active
+        // Left click cancels MIDI learn if active, then falls through to start drag
         if (mProcessor && mProcessor->mMidiLearnParam.load(std::memory_order_relaxed) >= 0)
         {
             mProcessor->cancelMidiLearn();
             if (mTooltip) mTooltip->hide();
             repaint();
-            return;
         }
         mDragging = true;
         mAccumVal = mParam ? mParam->getValue() : 0.f;
@@ -204,14 +203,12 @@ public:
         if (!mProcessor || mParamIdx < 0) { mTooltip->setLine2({}); return; }
         if (mProcessor->mMidiLearnParam.load(std::memory_order_relaxed) == mParamIdx)
         {
-            mTooltip->setLine2("MIDI LEARN");
+            int cc = mProcessor->getCCForParam(mParamIdx);
+            mTooltip->setLine2(cc >= 0 ? "MIDI LEARN (CC " + juce::String(cc) + ")" : "MIDI LEARN");
             return;
         }
         int cc = mProcessor->getCCForParam(mParamIdx);
-        if (cc >= 0)
-            mTooltip->setLine2("CC " + juce::String(cc));
-        else
-            mTooltip->setLine2({});
+        mTooltip->setLine2(cc >= 0 ? "CC " + juce::String(cc) : "CC ??");
     }
 
 private:

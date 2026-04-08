@@ -3,6 +3,9 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "KR106Tooltip.h"
+#include "PluginProcessor.h"
+
 // ============================================================================
 // KR106Switch — Vertical bitmap-based multi-position switch.
 // Always uses the 3-way sprite sheet (3 frames stacked vertically, @2x).
@@ -12,12 +15,17 @@
 class KR106Switch : public juce::Component
 {
 public:
-    KR106Switch(juce::RangedAudioParameter* param, const juce::Image& spriteSheet, int numPositions)
+    KR106Switch(juce::RangedAudioParameter* param, const juce::Image& spriteSheet,
+                int numPositions, KR106Tooltip* tip = nullptr)
         : mParam(param)
         , mSpriteSheet(spriteSheet)
         , mNumPositions(numPositions)
+        , mTooltip(tip)
     {
     }
+
+    void setMidiLearn(KR106AudioProcessor* proc, int paramIdx)
+    { mProcessor = proc; mParamIdx = paramIdx; }
 
     void paint(juce::Graphics& g) override
     {
@@ -36,11 +44,41 @@ public:
         g.drawImage(mSpriteSheet,
                     0.f, 0.f, frameW, frameH,
                     0, spriteIdx * frameH2x, frameW2x, frameH2x);
+
+        paintMidiLearnBorder(g);
+    }
+
+    void mouseEnter(const juce::MouseEvent&) override
+    {
+        if (mTooltip)
+        {
+            updateCCLine();
+            mTooltip->show(mParam, this);
+        }
+    }
+
+    void mouseExit(const juce::MouseEvent&) override
+    {
+        if (mTooltip) mTooltip->hide();
     }
 
     void mouseDown(const juce::MouseEvent& e) override
     {
+        if (e.mods.isPopupMenu() && mProcessor && mParamIdx >= 0)
+        {
+            mProcessor->startMidiLearn(mParamIdx);
+            updateCCLine();
+            if (mTooltip) mTooltip->show(mParam, this);
+            repaint();
+            return;
+        }
         if (e.mods.isPopupMenu()) return;
+        if (mProcessor && mProcessor->mMidiLearnParam.load(std::memory_order_relaxed) >= 0)
+        {
+            mProcessor->cancelMidiLearn();
+            if (mTooltip) mTooltip->hide();
+            repaint();
+        }
         mDragStartY = e.position.y;
         mDragStartIdx = currentIdx();
         mDragged = false;
@@ -87,7 +125,34 @@ private:
         return juce::jlimit(0, mNumPositions - 1, (int)std::round(val * (mNumPositions - 1)));
     }
 
+    void paintMidiLearnBorder(juce::Graphics& g)
+    {
+        if (mProcessor && mParamIdx >= 0
+            && mProcessor->mMidiLearnParam.load(std::memory_order_relaxed) == mParamIdx)
+        {
+            g.setColour(juce::Colour(0, 255, 0));
+            g.drawRect(getLocalBounds(), 1);
+        }
+    }
+
+    void updateCCLine()
+    {
+        if (!mTooltip) return;
+        if (!mProcessor || mParamIdx < 0) { mTooltip->setLine2({}); return; }
+        if (mProcessor->mMidiLearnParam.load(std::memory_order_relaxed) == mParamIdx)
+        {
+            int cc = mProcessor->getCCForParam(mParamIdx);
+            mTooltip->setLine2(cc >= 0 ? "MIDI LEARN (CC " + juce::String(cc) + ")" : "MIDI LEARN");
+            return;
+        }
+        int cc = mProcessor->getCCForParam(mParamIdx);
+        mTooltip->setLine2(cc >= 0 ? "CC " + juce::String(cc) : "CC ??");
+    }
+
     juce::RangedAudioParameter* mParam = nullptr;
+    KR106AudioProcessor* mProcessor = nullptr;
+    int mParamIdx = -1;
+    KR106Tooltip* mTooltip = nullptr;
     juce::Image mSpriteSheet;
     int mNumPositions = 2;
     float mDragStartY = 0.f;
@@ -104,12 +169,17 @@ private:
 class KR106HorizontalSwitch : public juce::Component
 {
 public:
-    KR106HorizontalSwitch(juce::RangedAudioParameter* param, const juce::Image& spriteSheet, int numPositions)
+    KR106HorizontalSwitch(juce::RangedAudioParameter* param, const juce::Image& spriteSheet,
+                          int numPositions, KR106Tooltip* tip = nullptr)
         : mParam(param)
         , mSpriteSheet(spriteSheet)
         , mNumPositions(numPositions)
+        , mTooltip(tip)
     {
     }
+
+    void setMidiLearn(KR106AudioProcessor* proc, int paramIdx)
+    { mProcessor = proc; mParamIdx = paramIdx; }
 
     void paint(juce::Graphics& g) override
     {
@@ -128,11 +198,41 @@ public:
         g.drawImage(mSpriteSheet,
                     0.f, 0.f, frameW, frameH,
                     0, spriteIdx * frameH2x, frameW2x, frameH2x);
+
+        paintMidiLearnBorder(g);
+    }
+
+    void mouseEnter(const juce::MouseEvent&) override
+    {
+        if (mTooltip)
+        {
+            updateCCLine();
+            mTooltip->show(mParam, this);
+        }
+    }
+
+    void mouseExit(const juce::MouseEvent&) override
+    {
+        if (mTooltip) mTooltip->hide();
     }
 
     void mouseDown(const juce::MouseEvent& e) override
     {
+        if (e.mods.isPopupMenu() && mProcessor && mParamIdx >= 0)
+        {
+            mProcessor->startMidiLearn(mParamIdx);
+            updateCCLine();
+            if (mTooltip) mTooltip->show(mParam, this);
+            repaint();
+            return;
+        }
         if (e.mods.isPopupMenu()) return;
+        if (mProcessor && mProcessor->mMidiLearnParam.load(std::memory_order_relaxed) >= 0)
+        {
+            mProcessor->cancelMidiLearn();
+            if (mTooltip) mTooltip->hide();
+            repaint();
+        }
         mDragStartX = e.position.x;
         mDragStartIdx = currentIdx();
         mDragged = false;
@@ -178,7 +278,34 @@ private:
         return juce::jlimit(0, mNumPositions - 1, (int)std::round(val * (mNumPositions - 1)));
     }
 
+    void paintMidiLearnBorder(juce::Graphics& g)
+    {
+        if (mProcessor && mParamIdx >= 0
+            && mProcessor->mMidiLearnParam.load(std::memory_order_relaxed) == mParamIdx)
+        {
+            g.setColour(juce::Colour(0, 255, 0));
+            g.drawRect(getLocalBounds(), 1);
+        }
+    }
+
+    void updateCCLine()
+    {
+        if (!mTooltip) return;
+        if (!mProcessor || mParamIdx < 0) { mTooltip->setLine2({}); return; }
+        if (mProcessor->mMidiLearnParam.load(std::memory_order_relaxed) == mParamIdx)
+        {
+            int cc = mProcessor->getCCForParam(mParamIdx);
+            mTooltip->setLine2(cc >= 0 ? "MIDI LEARN (CC " + juce::String(cc) + ")" : "MIDI LEARN");
+            return;
+        }
+        int cc = mProcessor->getCCForParam(mParamIdx);
+        mTooltip->setLine2(cc >= 0 ? "CC " + juce::String(cc) : "CC ??");
+    }
+
     juce::RangedAudioParameter* mParam = nullptr;
+    KR106AudioProcessor* mProcessor = nullptr;
+    int mParamIdx = -1;
+    KR106Tooltip* mTooltip = nullptr;
     juce::Image mSpriteSheet;
     int mNumPositions = 2;
     float mDragStartX = 0.f;

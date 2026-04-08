@@ -3,6 +3,9 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "KR106Tooltip.h"
+#include "PluginProcessor.h"
+
 // Draw a 3D bevel button (pixel-perfect, no AA).
 // Types: 0=Cream, 1=Yellow, 2=Orange.
 // When pressed: highlight and shadow swap.
@@ -51,13 +54,18 @@ class KR106ButtonLED : public juce::Component
 {
 public:
     KR106ButtonLED(juce::RangedAudioParameter* param, int buttonType,
-                   const juce::Image& ledImage, juce::RangedAudioParameter* powerParam)
+                   const juce::Image& ledImage, juce::RangedAudioParameter* powerParam,
+                   KR106Tooltip* tip = nullptr)
         : mParam(param)
         , mButtonType(buttonType)
         , mLedImage(ledImage)
         , mPowerParam(powerParam)
+        , mTooltip(tip)
     {
     }
+
+    void setMidiLearn(KR106AudioProcessor* proc, int paramIdx)
+    { mProcessor = proc; mParamIdx = paramIdx; }
 
     void paint(juce::Graphics& g) override
     {
@@ -79,10 +87,47 @@ public:
 
         // Button at (0, 9), 17x19
         DrawKR106Button(g, 0.f, 9.f, 17.f, 28.f, mButtonType, mPressed);
+
+        // Green border when in MIDI learn mode
+        if (mProcessor && mParamIdx >= 0
+            && mProcessor->mMidiLearnParam.load(std::memory_order_relaxed) == mParamIdx)
+        {
+            g.setColour(juce::Colour(0, 255, 0));
+            g.drawRect(getLocalBounds(), 1);
+        }
     }
 
-    void mouseDown(const juce::MouseEvent& /*e*/) override
+    void mouseEnter(const juce::MouseEvent&) override
     {
+        if (mTooltip)
+        {
+            updateCCLine();
+            mTooltip->show(mParam, this);
+        }
+    }
+
+    void mouseExit(const juce::MouseEvent&) override
+    {
+        if (mTooltip) mTooltip->hide();
+    }
+
+    void mouseDown(const juce::MouseEvent& e) override
+    {
+        if (e.mods.isPopupMenu() && mProcessor && mParamIdx >= 0)
+        {
+            mProcessor->startMidiLearn(mParamIdx);
+            updateCCLine();
+            if (mTooltip) mTooltip->show(mParam, this);
+            repaint();
+            return;
+        }
+        if (e.mods.isPopupMenu()) return;
+        if (mProcessor && mProcessor->mMidiLearnParam.load(std::memory_order_relaxed) >= 0)
+        {
+            mProcessor->cancelMidiLearn();
+            if (mTooltip) mTooltip->hide();
+            repaint();
+        }
         if (!mParam) return;
         mPressed = true;
         float newVal = mParam->getValue() > 0.5f ? 0.f : 1.f;
@@ -99,8 +144,25 @@ public:
     }
 
 private:
+    void updateCCLine()
+    {
+        if (!mTooltip) return;
+        if (!mProcessor || mParamIdx < 0) { mTooltip->setLine2({}); return; }
+        if (mProcessor->mMidiLearnParam.load(std::memory_order_relaxed) == mParamIdx)
+        {
+            int cc = mProcessor->getCCForParam(mParamIdx);
+            mTooltip->setLine2(cc >= 0 ? "MIDI LEARN (CC " + juce::String(cc) + ")" : "MIDI LEARN");
+            return;
+        }
+        int cc = mProcessor->getCCForParam(mParamIdx);
+        mTooltip->setLine2(cc >= 0 ? "CC " + juce::String(cc) : "CC ??");
+    }
+
     juce::RangedAudioParameter* mParam = nullptr;
     juce::RangedAudioParameter* mPowerParam = nullptr;
+    KR106AudioProcessor* mProcessor = nullptr;
+    int mParamIdx = -1;
+    KR106Tooltip* mTooltip = nullptr;
     int mButtonType = 0;
     juce::Image mLedImage;
     bool mPressed = false;

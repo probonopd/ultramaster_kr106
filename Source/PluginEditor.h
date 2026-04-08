@@ -25,6 +25,9 @@ public:
     void mouseDown(const juce::MouseEvent&) override;
     bool keyPressed(const juce::KeyPress&) override;
     bool keyStateChanged(bool isKeyDown) override;
+    // Disable JUCE's default Tab/Shift+Tab focus traversal so we can
+    // use those keys for MIDI learn navigation in keyPressed().
+    std::unique_ptr<juce::ComponentTraverser> createKeyboardFocusTraverser() override { return nullptr; }
     void showSettingsMenu();
 
 private:
@@ -39,12 +42,16 @@ private:
 
     void timerCallback() override;
     void applyScale(float s);
+    void advanceMidiLearn(int dir);
 
     KR106AudioProcessor& mProcessor;
     juce::Image mBackground;
     juce::Component mContent; // inner wrapper; all controls are children of this
 
     juce::OwnedArray<juce::Component> mControls;
+    struct LearnableControl { int paramIdx; juce::Component* ctrl; };
+    std::vector<LearnableControl> mLearnableControls; // UI layout order (for Tab navigation)
+    std::vector<int> mLearnableParams; // param indices only (parallel, for quick lookup)
     KR106Scope* mScope = nullptr;
     KR106Keyboard* mKeyboard = nullptr;
     KR106PresetDisplay* mPresetDisplay = nullptr;
