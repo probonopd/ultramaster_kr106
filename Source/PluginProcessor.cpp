@@ -899,12 +899,27 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     {
       if (auto pos = ph->getPosition())
       {
-        // Fresh transport data from host -- update cache
+        // Update cache from whatever the host provides this cycle.
+        // LV2 hosts (Jalv/Zynthian) only send transport atoms on state
+        // changes, so getBpm()/getPpqPosition() return nullopt most cycles.
         bool prevPlaying = mCachedPlaying;
         bool prevHaveBPM = mCachedHaveBPM;
         mCachedPlaying = pos->getIsPlaying();
-        if (auto b = pos->getBpm())         { mCachedBPM = *b; mCachedHaveBPM = true; }
-        if (auto p = pos->getPpqPosition()) { mCachedPPQ = *p; mCachedHavePPQ = true; }
+        bool gotFreshBPM = false;
+        bool gotFreshPPQ = false;
+        if (auto b = pos->getBpm())         { mCachedBPM = *b; mCachedHaveBPM = true; gotFreshBPM = true; }
+        if (auto p = pos->getPpqPosition()) { mCachedPPQ = *p; mCachedHavePPQ = true; gotFreshPPQ = true; }
+
+        // Extrapolate beat position when host didn't provide fresh PPQ.
+        // Use cached BPM if available, otherwise 120 BPM fallback so the
+        // arp advances even before the host sends its first transport atom.
+        if (!gotFreshPPQ)
+        {
+          double bpm = mCachedHaveBPM ? mCachedBPM : 120.0;
+          double beatsPerSample = bpm / (60.0 * getSampleRate());
+          mCachedPPQ += beatsPerSample * nFrames;
+        }
+
         // Log only on state changes
         if (mCachedPlaying != prevPlaying || mCachedHaveBPM != prevHaveBPM)
           dbgTransport("pos: playing=" + juce::String(mCachedPlaying ? 1 : 0)
@@ -912,12 +927,6 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                      + " ppq=" + juce::String(mCachedPPQ, 3)
                      + " haveBPM=" + juce::String(mCachedHaveBPM ? 1 : 0)
                      + " havePPQ=" + juce::String(mCachedHavePPQ ? 1 : 0));
-      }
-      else if (mCachedPlaying && mCachedHaveBPM)
-      {
-        // No fresh data but transport was running -- extrapolate beat position
-        double beatsPerSample = mCachedBPM / (60.0 * getSampleRate());
-        mCachedPPQ += beatsPerSample * nFrames;
       }
     }
     else
