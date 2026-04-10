@@ -70,6 +70,7 @@ struct SawTables {
   void Init(float sr) {
     sampleRate = sr;
     float nyquist = sr * 0.5f;
+    InitSincKernel();
 
     for (int t = 0; t < kNumTables; t++) {
       float freqBound = kBaseFreq * powf(2.f, static_cast<float>(t + 1));
@@ -84,22 +85,78 @@ struct SawTables {
         tables[t][n] = static_cast<float>(val);
       }
     }
+
   }
 
-  // 4-point Hermite interpolation from a cyclic table.
+  // 16-tap windowed sinc interpolation from a cyclic table.
+  // Uses a precomputed polyphase kernel (Blackman-Harris window).
+  // Provides near-perfect reconstruction up to table Nyquist,
+  // so all harmonics stored in the wavetable are faithfully reproduced
+  // regardless of the playback-to-table sample rate ratio.
+  static constexpr int kSincTaps = 16;       // taps (8 each side of center)
+  static constexpr int kSincHalf = kSincTaps / 2;
+  static constexpr int kSincPhases = 1024;   // fractional phase resolution
+  // Polyphase kernel: kSincPhases rows × kSincTaps columns.
+  // Initialized once by InitSincKernel().
+  static inline float sSincKernel[kSincPhases][kSincTaps] = {};
+  static inline bool sSincInit = false;
+
+  static void InitSincKernel()
+  {
+    if (sSincInit) return;
+    for (int p = 0; p < kSincPhases; p++)
+    {
+      float frac = static_cast<float>(p) / kSincPhases;
+      double sum = 0.0;
+      for (int t = 0; t < kSincTaps; t++)
+      {
+        // Tap position relative to the interpolation point.
+        // t=0 is the leftmost tap (kSincHalf-1 samples before center),
+        // t=kSincHalf-1 is one sample before center, t=kSincHalf is center.
+        double x = static_cast<double>(t - kSincHalf + 1) - static_cast<double>(frac);
+
+        // sinc(x)
+        double s;
+        if (fabs(x) < 1e-12)
+          s = 1.0;
+        else
+          s = sin(M_PI * x) / (M_PI * x);
+
+        // Blackman-Harris 4-term window (92 dB sidelobe rejection)
+        double n = static_cast<double>(t) + 1.0 - static_cast<double>(frac);
+        double wn = n / static_cast<double>(kSincTaps);
+        double w = 0.35875
+                 - 0.48829 * cos(2.0 * M_PI * wn)
+                 + 0.14128 * cos(4.0 * M_PI * wn)
+                 - 0.01168 * cos(6.0 * M_PI * wn);
+
+        double val = s * w;
+        sSincKernel[p][t] = static_cast<float>(val);
+        sum += val;
+      }
+      // Normalize so kernel sums to 1.0 (preserves DC gain)
+      float invSum = static_cast<float>(1.0 / sum);
+      for (int t = 0; t < kSincTaps; t++)
+        sSincKernel[p][t] *= invSum;
+    }
+    sSincInit = true;
+  }
+
   // phase must be in [0, 1).
   static float Read(const float* tbl, float phase) {
     float idx = phase * kSize;
     int i = static_cast<int>(idx);
-    float f = idx - static_cast<float>(i);
-    float y0 = tbl[(i - 1) & kMask];
-    float y1 = tbl[i & kMask];
-    float y2 = tbl[(i + 1) & kMask];
-    float y3 = tbl[(i + 2) & kMask];
-    float c1 = 0.5f * (y2 - y0);
-    float c2 = y0 - 2.5f * y1 + 2.f * y2 - 0.5f * y3;
-    float c3 = 0.5f * (y3 - y0) + 1.5f * (y1 - y2);
-    return ((c3 * f + c2) * f + c1) * f + y1;
+    float frac = idx - static_cast<float>(i);
+
+    int p = static_cast<int>(frac * kSincPhases);
+    if (p >= kSincPhases) p = kSincPhases - 1;
+    const float* kernel = sSincKernel[p];
+
+    float sum = 0.f;
+    int base = i - kSincHalf + 1;
+    for (int t = 0; t < kSincTaps; t++)
+      sum += tbl[(base + t) & kMask] * kernel[t];
+    return sum;
   }
 
   // Read with crossfade between two adjacent octave tables.
@@ -113,8 +170,12 @@ struct SawTables {
 
   // Convert a continuous octave index to table index + blend fraction.
   // octave = log2f(freq / kBaseFreq).
+  // Table t covers fundamentals up to kBaseFreq * 2^(t+1), so a note
+  // at exactly the boundary should use table t, not t+1. The -1 offset
+  // ensures the mapping is correct: at 261.6 Hz (octave 4.0), tblIdx=3
+  // with blend=1.0, reading fully from table 3 (183 harmonics at 96k).
   static void OctaveToTable(float octave, int& tblIdx, float& blend) {
-    octave = std::max(0.f, std::min(octave, static_cast<float>(kNumTables - 2)));
+    octave = std::max(0.f, std::min(octave - 1.f, static_cast<float>(kNumTables - 2)));
     tblIdx = static_cast<int>(octave);
     blend = octave - static_cast<float>(tblIdx);
   }
@@ -142,7 +203,8 @@ struct OscillatorsWT {
   // Ramp curvature: subtle quadratic bow matching hardware measurements.
   // Applied as phase warp before table lookup. At 0.03 the spectral
   // effect is below -100 dB so it doesn't meaningfully affect aliasing.
-  static constexpr float kSawCurve = 0.03f;
+  // I think the curve we saw was a result of my Juno6 HPF never being fully off
+  static constexpr float kSawCurve = 0.00f; // disabled curve
 
   const SawTables* mTables = nullptr;
 
