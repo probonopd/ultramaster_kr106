@@ -17,6 +17,7 @@
 #include "KR106Arpeggiator.h"
 #include "KR106Chorus.h"
 #include "KR106_HPF.h"
+#include "KR106AnalogNoise.h"
 
 // Top-level KR-106 DSP orchestrator
 
@@ -432,7 +433,6 @@ public:
     ForEachVoice([&](kr106::Voice<T>& v) { anyBusy |= v.GetBusy(); });
     bool anyGated = false;
     for (int i = 0; i < nv; i++) anyGated |= (mVoiceNote[i] >= 0);
-    // Unison mode: voices aren't tracked via mVoiceNote
     if (mPortaMode == 0 && mUnisonNote >= 0) anyGated = true;
     mLFO.SetVoiceActive(anyBusy, anyGated);
 
@@ -440,7 +440,6 @@ public:
     {
       mLFOBuffer[s] = static_cast<T>(mLFO.Process());
       mLFORawBuffer[s] = static_cast<T>(mLFO.mLastTri);
-
       mNoiseBuffer[s] = static_cast<T>(mNoise.Process());
     }
 
@@ -455,20 +454,14 @@ public:
     for (auto& v : mVoices)
     {
       if (!v->GetBusy()) continue;
-      v->mLfoEnvAmp = mLFO.mAmp; // pass LFO onset envelope for J106 integer VCF
+      v->mLfoEnvAmp = mLFO.mAmp;
       v->ProcessSamplesAccumulating(mModulations.data(), outputs, kNumModulations, nOutputs, 0, nFrames);
     }
 
-    // Scope sync: single accumulator running at the oldest voice's base
-    // pitch (without LFO). Pulses every 2 cycles (sub-oscillator period)
-    // so the display shows one full sub cycle. For very low frequencies
-    // where 2 cycles won't fit in the scope ring buffer, pulse every cycle.
+    // Scope sync
     if (scopeVoice >= 0)
     {
       float syncCps = mVoices[scopeVoice]->GetScopeSyncCPS();
-      // 2 cycles fit if period*2 < ring size (with margin for the scope
-      // to find both pulses within its available samples).
-      // Scope ring is 4096 samples; need two sync pulses to fit with margin.
       bool useSub = syncCps > 0.f && (2.f / syncCps) < 3200.f;
       for (int s = 0; s < nFrames; s++)
       {
@@ -490,24 +483,20 @@ public:
       }
     }
 
-    // Analog noise floor: models the constant background hiss from voice chip
-    // op-amps, mixer bus, and power supply. Added before HPF to match the
-    // hardware signal path. Level: -60 dBFS (~0.001 amplitude).
-    static constexpr float kNoiseFloor = 0.0001f; // -80 dBFS
-    for (int s = 0; s < nFrames; s++)
-    {
-      mFloorNoiseSeed = mFloorNoiseSeed * 196314165u + 907633515u;
-      float floorNoise = (2.f * mFloorNoiseSeed / static_cast<float>(0xFFFFFFFFu) - 1.f) * kNoiseFloor;
-      outputs[0][s] += static_cast<T>(floorNoise);
-    }
-
     for (int s = 0; s < nFrames; s++)
       outputs[0][s] = static_cast<T>(mHPF.Process(static_cast<float>(outputs[0][s])));
 
-    // VCA level + master volume before chorus — matches hardware signal chain
-    // (JU-106 Service Notes: VCA IC5 → Chorus BBD).
+    // Analog noise floor: white broadband + small 120 Hz rail ripple.
     for (int s = 0; s < nFrames; s++)
-      outputs[0][s] *= static_cast<T>(mVcaLevel * mMasterVol);
+    {
+      float n = mFloorNoise.Process() * kr106::analog_noise::kDryBroadbandGain * mNoiseFloorMul;
+      n += mFloorRipple.Process() * mMainsMul;
+      outputs[0][s] += static_cast<T>(n);
+    }
+
+    // VCA level before chorus (matches hardware: VCA IC5 → Chorus BBD)
+    for (int s = 0; s < nFrames; s++)
+      outputs[0][s] *= static_cast<T>(mVcaLevel);
 
     // Always call Chorus::Process — even when bypassed it keeps the
     // delay lines, filter state, and LFO warm for click-free engagement.
@@ -518,6 +507,13 @@ public:
       mChorus.Process(mono, L, R);
       outputs[0][s] = static_cast<T>(L);
       if (nOutputs > 1) outputs[1][s] = static_cast<T>(R);
+    }
+
+    // Master volume after chorus (scales signal + chorus noise together)
+    for (int s = 0; s < nFrames; s++)
+    {
+      outputs[0][s] *= static_cast<T>(mMasterVol);
+      if (nOutputs > 1) outputs[1][s] *= static_cast<T>(mMasterVol);
     }
   }
 
@@ -542,6 +538,14 @@ public:
     mHPF.Init();
     mHPF.SetMode(1);
     mChorus.Init(mSampleRate);
+    mFloorNoise.Init(mSampleRate); 
+    mFloorRipple.SetMainsHz(60.f, mSampleRate);  // 50.f for EU
+    mFloorRipple.SetAmplitudes(
+    kr106::analog_noise::kDryRipple120,
+    kr106::analog_noise::kDryRipple240,
+    kr106::analog_noise::kDryRipple360);
+    mFloorRipple.Reset();
+
     mArp.SetSampleRate(mSampleRate);
     mNoise.SetSampleRate(mSampleRate);
     mLFOBuffer.resize(blockSize);
@@ -644,7 +648,10 @@ public:
   std::vector<T> mLFORawBuffer; // raw triangle (before onset envelope)
   std::vector<T> mNoiseBuffer;  // shared noise source (single generator for all voices)
   kr106::Noise mNoise;
-  uint32_t mFloorNoiseSeed = 77777u; // PRNG for analog noise floor
+  kr106::AnalogFloorNoise  mFloorNoise;
+  kr106::RailRipple mFloorRipple;
+  float mNoiseFloorMul = 1.f;  // user-adjustable analog broadband multiplier (variance sheet)
+  float mMainsMul = 1.f;      // user-adjustable mains ripple multiplier (variance sheet)
   std::vector<T> mSyncBuffer;
   float mScopeSyncPhase = 0.f;
   bool mScopeSyncSub = false;

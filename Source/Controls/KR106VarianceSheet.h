@@ -14,8 +14,9 @@ class KR106VarianceSheet : public juce::Component
 public:
     static constexpr int kMaxVoices = 10;
     static constexpr int kNumParams = 6;
-    static constexpr int kHeaderRow = 1;  // row 0 is title
-    static constexpr int kTotalRows = kHeaderRow + 1 + kMaxVoices; // title + header + voices
+    // Layout: title, noise row (analog + chorus on one line), header, 10 voices
+    static constexpr int kFirstVoiceRow = 3; // title + noise + header
+    static constexpr int kTotalRows = kFirstVoiceRow + kMaxVoices;
     static constexpr int kLabelCol = 1;   // voice label column
     static constexpr int kTotalCols = kLabelCol + kNumParams;
 
@@ -26,6 +27,13 @@ public:
         setWantsKeyboardFocus(true);
         setAlwaysOnTop(true);
         readFromVoices();
+        if (mProcessor)
+        {
+            mAnalogNoiseKnob = mulToKnob(mProcessor->mDSP.mNoiseFloorMul);
+            mMainsNoiseKnob = mulToKnob(mProcessor->mDSP.mMainsMul);
+            mClockNoiseKnob = mulToKnob(mProcessor->mDSP.mChorus.mClockMul);
+            // Note: chorus mAnalogMul is always kept in sync with mNoiseFloorMul
+        }
     }
 
     // Cell sizes match the 8×16 preset sheet grid (940/8 = 117w, 224/16 = 14h)
@@ -75,9 +83,40 @@ public:
         drawBtn(mTuneLazyRect,    " Human Tune ",   -3);
         drawBtn(mTunePerfectRect, " Robot Tune ",   -4);
 
+        // Noise row: 3 controls side by side
+        {
+            int y = kRowH;
+            int cellH = kRowH;
+            int cellW = w / 3;
+
+            auto paintNoiseCell = [&](int hitId, int x0, int cw, const char* label, float knobVal) {
+                bool isHover = (mHoverRow == hitId);
+                bool isSel = (mSelectedRow == hitId);
+                if (isSel)
+                {
+                    g.setColour(bright());
+                    g.fillRect(x0 + 1, y + 1, cw - 1, cellH - 1);
+                }
+                else if (isHover)
+                {
+                    g.setColour(hoverBg());
+                    g.fillRect(x0 + 1, y + 1, cw - 1, cellH - 1);
+                }
+                g.setColour(isSel ? bg() : bright());
+                g.drawSingleLineText(label, x0 + 4, y + cellH - 2);
+                int pct = juce::roundToInt(knobVal * 100.f);
+                g.drawSingleLineText(juce::String(pct) + " %",
+                                     x0 + cw - 8, y + cellH - 2,
+                                     juce::Justification::right);
+            };
+            paintNoiseCell(-5, 0,          cellW,         "ANALOG", mAnalogNoiseKnob);
+            paintNoiseCell(-6, cellW,      cellW,         "MAINS",  mMainsNoiseKnob);
+            paintNoiseCell(-7, cellW * 2,  w - cellW * 2, "CLOCK",  mClockNoiseKnob);
+        }
+
         // Header row (inverted: bright bg, black text)
-        int headerY = kRowH;
-        int headerH = 2 * kRowH - headerY;
+        int headerY = 2 * kRowH;
+        int headerH = kRowH;
         g.setColour(bright());
         g.fillRect(0, headerY, w, headerH);
         g.setColour(bg());
@@ -97,17 +136,18 @@ public:
             int y = row * kRowH;
             g.drawHorizontalLine(y, 0.f, static_cast<float>(w));
         }
+        int voiceGridTop = static_cast<int>(kFirstVoiceRow * kRowH);
         g.drawVerticalLine(kColW, static_cast<float>(kRowH), static_cast<float>(h));
         for (int p = 1; p < kNumParams; p++)
         {
             int x = (p + 1) * kColW;
-            g.drawVerticalLine(x, static_cast<float>(kRowH), static_cast<float>(h));
+            g.drawVerticalLine(x, static_cast<float>(voiceGridTop), static_cast<float>(h));
         }
 
         // Voice rows
         for (int v = 0; v < kMaxVoices; v++)
         {
-            int row = v + 2; // skip title + header
+            int row = v + kFirstVoiceRow;
             int y = row * kRowH;
             int cellH = (row + 1) * kRowH - y;
             bool inactive = v >= activeVoices;
@@ -176,7 +216,15 @@ public:
         if (mTunePerfectRect.contains(e.getPosition())) { tunePerfect();       return; }
 
         auto [row, col] = hitTest(e.getPosition());
-        if (row >= 0 && row < kMaxVoices && col >= 0 && col < kNumParams)
+        if (row == -5 || row == -6 || row == -7)
+        {
+            mSelectedRow = row;
+            mSelectedCol = 0;
+            mDragStartY = e.y;
+            mDragStartValue = noiseKnob(row);
+            repaint();
+        }
+        else if (row >= 0 && row < kMaxVoices && col >= 0 && col < kNumParams)
         {
             mSelectedRow = row;
             mSelectedCol = col;
@@ -192,6 +240,14 @@ public:
 
     void mouseDrag(const juce::MouseEvent& e) override
     {
+        if (mSelectedRow == -5 || mSelectedRow == -6 || mSelectedRow == -7)
+        {
+            float delta = (mDragStartY - e.y) * (1.f / 80.f);
+            noiseKnob(mSelectedRow) = std::clamp(mDragStartValue + delta, 0.f, 1.f);
+            applyNoise();
+            repaint();
+            return;
+        }
         if (mSelectedRow < 0) return;
         auto info = kr106::Voice<float>::GetVarianceInfo(mSelectedCol);
         float delta = (mDragStartY - e.y) * (info.range / 50.f);
@@ -222,6 +278,26 @@ public:
         {
             dismiss();
             return true;
+        }
+
+        if (mSelectedRow == -5 || mSelectedRow == -6 || mSelectedRow == -7)
+        {
+            float& knob = noiseKnob(mSelectedRow);
+            if (key == juce::KeyPress::upKey)
+            {
+                knob = std::clamp(knob + 0.01f, 0.f, 1.f);
+                applyNoise();
+                repaint();
+                return true;
+            }
+            if (key == juce::KeyPress::downKey)
+            {
+                knob = std::clamp(knob - 0.01f, 0.f, 1.f);
+                applyNoise();
+                repaint();
+                return true;
+            }
+            return false;
         }
 
         if (mSelectedRow < 0) return false;
@@ -296,6 +372,10 @@ private:
                 applyToVoice(v, p);
             }
         }
+        mAnalogNoiseKnob = 0.f;
+        mMainsNoiseKnob = 0.f;
+        mClockNoiseKnob = 0.f;
+        applyNoise();
         repaint();
     }
 
@@ -323,9 +403,6 @@ private:
 
     std::pair<int, int> hitTest(juce::Point<int> pos) const
     {
-        int row = pos.y / kRowH - 2; // -2 for title+header
-        int col = pos.x / kColW - 1; // -1 for voice label column
-
         if (pos.y < kRowH)
         {
             if (mTunePoorlyRect.contains(pos))  return { -2, -1 };
@@ -333,10 +410,54 @@ private:
             if (mTunePerfectRect.contains(pos)) return { -4, -1 };
         }
 
+        // Noise row: y = 1*kRowH to 2*kRowH, three cells
+        if (pos.y >= kRowH && pos.y < 2 * kRowH)
+        {
+            int cellW = getWidth() / 3;
+            if (pos.x < cellW)      return { -5, 0 };
+            if (pos.x < cellW * 2)  return { -6, 0 };
+            return { -7, 0 };
+        }
+
+        int row = pos.y / kRowH - kFirstVoiceRow;
+        int col = pos.x / kColW - 1;
+
         if (row < 0 || row >= kMaxVoices || col < 0 || col >= kNumParams)
             return { -1, -1 };
 
         return { row, col };
+    }
+
+    // Noise floor taper: 0..1 knob -> multiplier.
+    // 0 = silent, 0.5 = unity, 1 = 4x.
+    static float knobToMul(float knob)
+    {
+        if (knob <= 0.f) return 0.f;
+        return powf(4.f, 2.f * knob - 1.f); // 0.25..1..4
+    }
+
+    static float mulToKnob(float mul)
+    {
+        if (mul <= 0.f) return 0.f;
+        return (log2f(mul) / 2.f + 1.f) * 0.5f; // inverse of knobToMul
+    }
+
+    float& noiseKnob(int hitId)
+    {
+        if (hitId == -6) return mMainsNoiseKnob;
+        if (hitId == -7) return mClockNoiseKnob;
+        return mAnalogNoiseKnob; // -5
+    }
+
+    void applyNoise()
+    {
+        if (!mProcessor) return;
+        float analogMul = knobToMul(mAnalogNoiseKnob);
+        mProcessor->mDSP.mNoiseFloorMul = analogMul;
+        mProcessor->mDSP.mChorus.mAnalogMul = analogMul;
+        mProcessor->mDSP.mMainsMul = knobToMul(mMainsNoiseKnob);
+        mProcessor->mDSP.mChorus.mMainsMul = knobToMul(mMainsNoiseKnob);
+        mProcessor->mDSP.mChorus.mClockMul = knobToMul(mClockNoiseKnob);
     }
 
     void dismiss()
@@ -348,6 +469,9 @@ private:
     juce::Typeface::Ptr mTypeface;
     std::function<void()> mOnClose;
 
+    float mAnalogNoiseKnob = 0.5f;  // 0..1, 0.5 = unity
+    float mMainsNoiseKnob = 0.5f;
+    float mClockNoiseKnob = 0.5f;
     float mValues[kMaxVoices][kNumParams] = {};
     int mHoverRow = -1, mHoverCol = -1;
     int mSelectedRow = -1, mSelectedCol = -1;

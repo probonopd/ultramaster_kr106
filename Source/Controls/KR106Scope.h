@@ -264,10 +264,14 @@ public:
         // Update bouncing ball regardless of audio level
         if (mScaleIdx == 4) updateBall();
 
-        // If audio is silent, clear display
-        if (peak < 1e-6f)
+        // If audio is silent, clear display and zero stale buffers.
+        // Threshold set above the analog noise floor (~1e-4) so the scope
+        // blanks promptly on note-off in gate mode.
+        if (peak < 1e-3f)
         {
             mHasData = false;
+            mDisplayLen = 0;
+            mSamplesAvail = 0;
             repaint();
             return;
         }
@@ -384,6 +388,14 @@ private:
 
         paintCrosshairs(g, w, h, dim);
 
+        // Flat line when idle
+        if (!mHasData || mDisplayLen < 2)
+        {
+            float cy = static_cast<float>(h) * 0.5f;
+            g.setColour(mid);
+            g.drawHorizontalLine(static_cast<int>(cy), 0.f, static_cast<float>(w));
+        }
+
         // Waveform -- one full period interpolated, smooth 2px path
         if (mHasData && mDisplayLen > 1)
         {
@@ -455,16 +467,26 @@ private:
         // FFT (using cached FFT object)
         mFFT.performRealOnlyForwardTransform(mFFTData);
 
-        // Compute magnitudes in dB
+        // Compute magnitudes in dB with temporal smoothing.
+        // Skip bin 0 (DC) and last bin (Nyquist) -- JUCE real-only FFT
+        // packs Nyquist into imag of bin 0, so both are unreliable.
         int numBins = kFFTSize / 2;
         float magnitudes[kFFTSize / 2];
-        for (int i = 0; i < numBins; i++)
+        magnitudes[0] = -120.f;
+        for (int i = 1; i < numBins - 1; i++)
         {
             float re = mFFTData[i * 2];
             float im = mFFTData[i * 2 + 1];
             float mag = sqrtf(re * re + im * im) / numBins;
-            magnitudes[i] = 20.f * log10f(std::max(mag, 1e-7f));
+            float db = 20.f * log10f(std::max(mag, 1e-7f));
+            if (!mSpecInit)
+                mSmoothedSpec[i] = db;
+            else
+                mSmoothedSpec[i] = mSmoothedSpec[i] * kSpecSmooth + db * (1.f - kSpecSmooth);
+            magnitudes[i] = mSmoothedSpec[i];
         }
+        magnitudes[numBins - 1] = magnitudes[numBins - 2]; // clamp last bin
+        mSpecInit = true;
 
         // Display range
         static constexpr float kMinDb = -90.f;
@@ -763,9 +785,10 @@ private:
 
         float fcSlider = fc;
         float sr = static_cast<float>(mProcessor->getSampleRate());
-        float frqNorm = fc / std::max(sr, 1.f);
+        float nyq = std::max(sr * 0.5f, 1.f);
+        float frqNorm = fc / nyq; // normalized to Nyquist, matches VCF::Process frq
         fc *= kr106::VCF::FreqCompensationClamped(k, frqNorm * 0.25f);
-        float comp = kr106::VCF::InputComp(k);
+        float comp = kr106::VCF::InputComp(k, frqNorm);
 
         // Display range
         static constexpr float kMinHz = 5.f;
@@ -817,7 +840,7 @@ private:
         // In normalized frequency (x = f/fc):
         //   |H|² = comp² / ((1+x²)⁴ + 2k(1+x²)²cos(4·atan(x)) + k²)
         float k2 = k * k;
-        float outputGain = 4.85f; // must match VCF::Process() output scaling
+        float outputGain = 3.22f; // must match VCF::Process() output scaling
         float totalComp = comp * outputGain;
         float comp2 = totalComp * totalComp;
 
@@ -1244,10 +1267,13 @@ private:
     // Spectrum analyzer cached state (avoid per-frame allocation)
     static constexpr int kFFTOrder = 12;
     static constexpr int kFFTSize = 1 << kFFTOrder;
+    static constexpr float kSpecSmooth = 0.7f; // temporal smoothing (0=no smooth, 0.9=very slow)
     juce::dsp::FFT mFFT { kFFTOrder };
     float mHannWindow[1 << 12] = {};
     float mFFTData[(1 << 12) * 2] = {};
+    float mSmoothedSpec[1 << 11] = {}; // smoothed magnitude in dB (kFFTSize/2 bins)
     bool mHannInit = false;
+    bool mSpecInit = false;
 
     void ensureHannWindow()
     {
