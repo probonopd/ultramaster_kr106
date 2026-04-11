@@ -68,22 +68,48 @@ public:
 
     void mouseMove(const juce::MouseEvent& e) override
     {
+        int ch = getHeight() - kNavH;
+        int arrowW = 14;
+
+        // Nav bar hover (all modes)
+        int prevNav = mNavHover;
+        if (e.y >= ch)
+            mNavHover = (e.x < arrowW) ? 0 : (e.x >= getWidth() - arrowW ? 1 : -1);
+        else
+            mNavHover = -1;
+        if (mNavHover != prevNav) repaint();
+
+        // Patch bank hover
         if (mScaleIdx == 4)
         {
             int prev = mPatchBankHover;
-            mPatchBankHover = patchIndexAt(e.x, e.y);
+            mPatchBankHover = (e.y < ch) ? patchIndexAt(e.x, e.y) : -1;
             if (mPatchBankHover != prev) repaint();
+        }
 
-            int prevNav = mPBNavHover;
-            mPBNavHover = (e.y >= kPBGridH) ? (e.x < getWidth() / 2 ? 0 : 1) : -1;
-            if (mPBNavHover != prevNav) repaint();
+        // ADSR: show resize cursor near draggable targets
+        if (mScaleIdx == 2 && e.y < ch)
+        {
+            float xNorm = static_cast<float>(e.x) / getWidth();
+            float hitZone = 5.f / getWidth();
+            int adsrHit = adsrHitTest(xNorm, static_cast<float>(e.y) / ch, hitZone);
+            if (adsrHit == kEnvS)
+                setMouseCursor(juce::MouseCursor::UpDownResizeCursor);
+            else if (adsrHit >= 0)
+                setMouseCursor(juce::MouseCursor::LeftRightResizeCursor);
+            else
+                setMouseCursor(juce::MouseCursor::NormalCursor);
+        }
+        else if (mScaleIdx != 2)
+        {
+            setMouseCursor(juce::MouseCursor::NormalCursor);
         }
     }
 
     void mouseExit(const juce::MouseEvent&) override
     {
         if (mPatchBankHover >= 0) { mPatchBankHover = -1; repaint(); }
-        if (mPBNavHover >= 0) { mPBNavHover = -1; repaint(); }
+        if (mNavHover >= 0) { mNavHover = -1; repaint(); }
     }
 
     // Stroke width that stays ~1.5 physical pixels regardless of UI scale
@@ -94,10 +120,13 @@ public:
         return 1.5f / scale;
     }
 
+    static constexpr int kNavH = 10; // nav bar height at bottom
+
     void paint(juce::Graphics& g) override
     {
         int w = getWidth();
         int h = getHeight();
+        int ch = h - kNavH; // content height (above nav bar)
 
         auto black = cBlack(), dim = cDim(), mid = cMid(), bright = cBright();
 
@@ -107,35 +136,45 @@ public:
         if (mProcessor && mProcessor->getParam(kPower)->getValue() <= 0.5f)
             return;
 
-        switch (mScaleIdx)
         {
-            case 0: paintWaveform(g, w, h, black, dim, mid, bright); break;
-            case 1: paintSpectrum(g, w, h, dim, mid, bright); break;
-            case 2: paintADSR(g, w, h, dim, mid, bright); break;
-            case 3: paintVCF(g, w, h, dim, mid, bright); break;
-            case 4: paintPatchBank(g, w, h, dim, mid, bright); break;
-            default: paintAbout(g, w, h, dim, mid, bright); break;
+            juce::Graphics::ScopedSaveState sss(g);
+            g.reduceClipRegion(0, 0, w, ch);
+
+            switch (mScaleIdx)
+            {
+                case 0: paintWaveform(g, w, ch, black, dim, mid, bright); break;
+                case 1: paintSpectrum(g, w, ch, dim, mid, bright); break;
+                case 2: paintADSR(g, w, ch, dim, mid, bright); break;
+                case 3: paintVCF(g, w, ch, dim, mid, bright); break;
+                case 4: paintPatchBank(g, w, ch, dim, mid, bright); break;
+                default: paintAbout(g, w, ch, dim, mid, bright); break;
+            }
         }
+
+        paintNavBar(g, w, h, ch, dim);
     }
 
     void mouseDown(const juce::MouseEvent& e) override
     {
+        int ch = getHeight() - kNavH;
+
+        // Nav bar click: all modes
+        if (e.y >= ch)
+        {
+            int arrowW = 14;
+            if (e.x < arrowW)
+                cycleMode(-1);
+            else if (e.x >= getWidth() - arrowW)
+                cycleMode(1);
+            return;
+        }
+
         if (mScaleIdx == 4 && mProcessor)
         {
             if (mBallActive)
             {
                 mBallActive = false;
                 repaint();
-                return;
-            }
-
-            // Nav area: < and > cycle scope mode
-            if (e.y >= kPBGridH)
-            {
-                if (e.x < getWidth() / 2)
-                    cycleMode(-1);
-                else
-                    cycleMode(1);
                 return;
             }
 
@@ -154,7 +193,43 @@ public:
                 parent->repaint();
             return;
         }
-        cycleMode(1);
+
+        // Interactive parameter drags
+        if (!mProcessor) return;
+        mScopeDragMode = kDragNone;
+
+        if (mScaleIdx == 0 || mScaleIdx == 1) // Waveform/Spectrum: drag = master volume
+        {
+            mScopeDragMode = kDragWaveform;
+            mDragStartVal[0] = mProcessor->getParam(kMasterVol)->getValue();
+            mProcessor->getParam(kMasterVol)->beginChangeGesture();
+        }
+        else if (mScaleIdx == 3) // VCF: X = freq, Y = res (direct position)
+        {
+            mScopeDragMode = kDragVCF;
+            mProcessor->getParam(kVcfFreq)->beginChangeGesture();
+            mProcessor->getParam(kVcfRes)->beginChangeGesture();
+            // Set immediately from click position
+            float vf = juce::jlimit(0.f, 1.f, static_cast<float>(e.x) / getWidth());
+            float vr = juce::jlimit(0.f, 1.f, 1.f - static_cast<float>(e.y) / ch);
+            mProcessor->getParam(kVcfFreq)->setValueNotifyingHost(vf);
+            mProcessor->getParam(kVcfRes)->setValueNotifyingHost(vr);
+        }
+        else if (mScaleIdx == 2) // ADSR: drag boundary lines or sustain level
+        {
+            float xNorm = static_cast<float>(e.x) / getWidth();
+            float yNorm = static_cast<float>(e.y) / ch;
+            float hitZone = 5.f / getWidth();
+            int hit = adsrHitTest(xNorm, yNorm, hitZone);
+            if (hit < 0) return; // click not near a target
+            mAdsrDragParam = hit;
+            mScopeDragMode = kDragADSR;
+            mDragStartVal[0] = mProcessor->getParam(mAdsrDragParam)->getValue();
+            mProcessor->getParam(mAdsrDragParam)->beginChangeGesture();
+            setMouseCursor(mAdsrDragParam == kEnvS
+                ? juce::MouseCursor::UpDownResizeCursor
+                : juce::MouseCursor::LeftRightResizeCursor);
+        }
     }
 
     void mouseDrag(const juce::MouseEvent& e) override
@@ -164,7 +239,43 @@ public:
             mDragEndX = std::clamp(e.x, 0, getWidth() - 1);
             mDragEndY = std::clamp(e.y, 0, getHeight() - 1);
             repaint();
+            return;
         }
+
+        if (!mProcessor || mScopeDragMode == kDragNone) return;
+
+        float dx = static_cast<float>(e.getDistanceFromDragStartX());
+        float dy = static_cast<float>(e.getDistanceFromDragStartY());
+        float gearing = e.mods.isShiftDown() ? 500.f : 128.f;
+
+        int ch = getHeight() - kNavH;
+
+        if (mScopeDragMode == kDragWaveform)
+        {
+            float v = juce::jlimit(0.f, 1.f, mDragStartVal[0] + (dx - dy) / gearing);
+            mProcessor->getParam(kMasterVol)->setValueNotifyingHost(v);
+        }
+        else if (mScopeDragMode == kDragVCF)
+        {
+            // Direct position: X = freq, Y = res
+            float vf = juce::jlimit(0.f, 1.f, static_cast<float>(e.x) / getWidth());
+            float vr = juce::jlimit(0.f, 1.f, 1.f - static_cast<float>(e.y) / ch);
+            mProcessor->getParam(kVcfFreq)->setValueNotifyingHost(vf);
+            mProcessor->getParam(kVcfRes)->setValueNotifyingHost(vr);
+        }
+        else if (mScopeDragMode == kDragADSR)
+        {
+            float delta;
+            if (mAdsrDragParam == kEnvS)
+                delta = -dy / gearing;  // sustain: up = more
+            else if (mAdsrDragParam == kEnvR)
+                delta = -dx / gearing;  // release: right = shorter, left = longer
+            else
+                delta = dx / gearing;   // A/D: right = longer
+            float v = juce::jlimit(0.f, 1.f, mDragStartVal[0] + delta);
+            mProcessor->getParam(mAdsrDragParam)->setValueNotifyingHost(v);
+        }
+        repaint();
     }
 
     void mouseUp(const juce::MouseEvent& e) override
@@ -196,6 +307,24 @@ public:
                 mBallActive = true;
             }
             repaint();
+        }
+
+        // End parameter drag gestures
+        if (mProcessor && mScopeDragMode != kDragNone)
+        {
+            if (mScopeDragMode == kDragWaveform)
+                mProcessor->getParam(kMasterVol)->endChangeGesture();
+            else if (mScopeDragMode == kDragVCF)
+            {
+                mProcessor->getParam(kVcfFreq)->endChangeGesture();
+                mProcessor->getParam(kVcfRes)->endChangeGesture();
+            }
+            else if (mScopeDragMode == kDragADSR)
+            {
+                mProcessor->getParam(mAdsrDragParam)->endChangeGesture();
+                setMouseCursor(juce::MouseCursor::NormalCursor);
+            }
+            mScopeDragMode = kDragNone;
         }
     }
 
@@ -366,7 +495,7 @@ private:
     }
 
     static constexpr int kPBCols = 16, kPBRows = 8, kPBCell = 8;
-    static constexpr int kPBGridH = kPBRows * kPBCell; // 64px for grid, rest for nav
+    static constexpr int kPBGridH = kPBRows * kPBCell; // 64px for grid
 
     int patchIndexAt(int x, int y) const
     {
@@ -440,12 +569,7 @@ private:
                 mClipHoldFrames = 30; // ~1 second at 30 Hz refresh
             else if (mClipHoldFrames > 0)
                 mClipHoldFrames--;
-            auto font = juce::Font(juce::FontOptions()
-                .withMetricsKind(juce::TypefaceMetricsKind::legacy)).withHeight(10.f);
-            g.setFont(font);
-            g.setColour(mClipHoldFrames > 0 ? bright : dim);
-            g.drawText(juce::String(peakDb, 1) + " dB",
-                       2, h - 14, w - 4, 12, juce::Justification::bottomRight);
+            mNavPeakDb = peakDb;
         }
     }
 
@@ -627,9 +751,8 @@ private:
             }
         }
 
-        // Total time window with 10% padding, minimum 500ms
         float totalMs = attackMs + decayMs + kSustainMs + releaseMs;
-        float windowMs = std::max(500.f, totalMs * 1.1f);
+        float windowMs = std::max(500.f, totalMs);
 
         // Phase boundary positions in ms
         float msAD   = attackMs;                          // attack -> decay
@@ -656,6 +779,13 @@ private:
         drawBoundary(msDS);
         drawBoundary(msSR);
 
+        // Cache boundaries for interactive drag hit-testing
+        mAdsrBoundAD = msAD / windowMs;
+        mAdsrBoundDS = msDS / windowMs;
+        mAdsrBoundSR = msSR / windowMs;
+        mAdsrBoundEnd = (msSR + releaseMs) / windowMs;
+        mAdsrSustainY = 1.f - sustain;
+
         // --- Evaluate envelope at a given ms offset from note-on ---
         if (j6)
         {
@@ -675,13 +805,28 @@ private:
                 return std::max(env, 0.f);
             };
 
+            auto msToY = [&](float ms) -> float {
+                return 1.f + (1.f - std::clamp(evalJ6(ms), 0.f, 1.f)) * (h - 3);
+            };
+            auto msToX = [&](float ms) -> float {
+                return ms / windowMs * (w - 1);
+            };
+
             juce::Path envPath;
-            envPath.startNewSubPath(0.f, 1.f + (1.f - std::clamp(evalJ6(0.f), 0.f, 1.f)) * (h - 3));
+            envPath.startNewSubPath(0.f, msToY(0.f));
+            // Uniform samples plus explicit keypoints at phase boundaries
+            float keypoints[] = { msAD, msDS, msSR };
+            int ki = 0;
             for (float px = 0.5f; px < w; px += 0.5f)
             {
                 float ms = (px / (w - 1)) * windowMs;
-                float env = std::clamp(evalJ6(ms), 0.f, 1.f);
-                envPath.lineTo(px, 1.f + (1.f - env) * (h - 3));
+                // Insert keypoints that fall before this px
+                while (ki < 3 && msToX(keypoints[ki]) <= px)
+                {
+                    envPath.lineTo(msToX(keypoints[ki]), msToY(keypoints[ki]));
+                    ki++;
+                }
+                envPath.lineTo(px, msToY(ms));
             }
             g.setColour(bright);
             g.strokePath(envPath, juce::PathStrokeType(strokeWidth(), juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
@@ -748,10 +893,25 @@ private:
                 return 1.f + (1.f - std::clamp(env, 0.f, 1.f)) * (h - 3);
             };
 
+            auto msToX106 = [&](float ms) -> float {
+                return ms / windowMs * (w - 1);
+            };
+
             juce::Path envPath;
             envPath.startNewSubPath(0.f, envAtPx(0.f));
+            // Explicit keypoints at phase boundaries
+            float keypoints106[] = { msAD, msDS, msSR };
+            int ki106 = 0;
             for (float px = 0.5f; px < w; px += 0.5f)
+            {
+                while (ki106 < 3 && msToX106(keypoints106[ki106]) <= px)
+                {
+                    float kx = msToX106(keypoints106[ki106]);
+                    envPath.lineTo(kx, envAtPx(kx));
+                    ki106++;
+                }
                 envPath.lineTo(px, envAtPx(px));
+            }
             g.setColour(bright);
             g.strokePath(envPath, juce::PathStrokeType(strokeWidth(), juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         }
@@ -840,9 +1000,10 @@ private:
         // In normalized frequency (x = f/fc):
         //   |H|² = comp² / ((1+x²)⁴ + 2k(1+x²)²cos(4·atan(x)) + k²)
         float k2 = k * k;
-        float outputGain = 3.22f; // must match VCF::Process() output scaling
-        float totalComp = comp * outputGain;
-        float comp2 = totalComp * totalComp;
+
+        // Normalize to 0 dB at DC: denominator at x=0 is (1 + k)^2 for |H|^2
+        // (cos(0) = 1, p2=1, p4=1, p8=1 → denom = 1 + 2k + k^2 = (1+k)^2)
+        float dcDenomSq = (1.f + k) * (1.f + k);
 
         auto evalDb = [&](float px) -> float {
             float logF = logMin + px / (w - 1) * logRange;
@@ -854,7 +1015,7 @@ private:
             float p8 = p4 * p4;
             float theta4 = 4.f * atanf(x);
             float denomSq = p8 + 2.f * k * p4 * cosf(theta4) + k2;
-            float magSq = comp2 / denomSq;
+            float magSq = dcDenomSq / denomSq; // normalized to 0 dB at DC
             float db = 10.f * log10f(std::max(magSq, 1e-12f));
             return std::clamp(db, kMinDb - 12.f, kMaxDb);
         };
@@ -872,20 +1033,7 @@ private:
         g.setColour(bright);
         g.strokePath(vcfPath, juce::PathStrokeType(strokeWidth(), juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-        // Cutoff frequency readout (top-right corner)
-        {
-            juce::String hzStr;
-            if (fcSlider >= 1000.f)
-                hzStr = juce::String(fcSlider / 1000.f, 2) + " kHz";
-            else
-                hzStr = juce::String(juce::roundToInt(fcSlider)) + " Hz";
-
-            auto font = juce::Font(juce::FontOptions()
-                .withMetricsKind(juce::TypefaceMetricsKind::legacy)).withHeight(10.f);
-            g.setFont(font);
-            g.setColour(dim);
-            g.drawText(hzStr, 0, 1, w - 2, 12, juce::Justification::topRight);
-        }
+        mNavVcfHz = fcSlider;
     }
 
     // ---- Frequency counter (zero-crossing measurement) ----
@@ -1132,39 +1280,6 @@ private:
             }
         }
 
-        // Nav area: < and > below the grid (cycle scope mode)
-        int navY = kPBGridH + 1;
-        int navH = h - navY;
-        int half = w / 2;
-
-        // Hover highlight
-        if (mPBNavHover >= 0)
-        {
-            auto hoverCol = juce::Colour(0, 40, 0);
-            g.setColour(hoverCol);
-            if (mPBNavHover == 0)
-                g.fillRect(0, navY, half, navH);
-            else
-                g.fillRect(half + 1, navY, half - 1, navH);
-        }
-
-        // Divider
-        g.setColour(cGrid());
-        g.fillRect(half, navY, 1, navH);
-
-        // < arrow (left half)
-        g.setColour(dim);
-        int ax = half / 2, ay = navY + navH / 2;
-        g.drawLine(static_cast<float>(ax + 3), static_cast<float>(ay - 3),
-                   static_cast<float>(ax), static_cast<float>(ay), 1.f);
-        g.drawLine(static_cast<float>(ax), static_cast<float>(ay),
-                   static_cast<float>(ax + 3), static_cast<float>(ay + 3), 1.f);
-        // > arrow (right half)
-        ax = half + half / 2;
-        g.drawLine(static_cast<float>(ax - 3), static_cast<float>(ay - 3),
-                   static_cast<float>(ax), static_cast<float>(ay), 1.f);
-        g.drawLine(static_cast<float>(ax), static_cast<float>(ay),
-                   static_cast<float>(ax - 3), static_cast<float>(ay + 3), 1.f);
     }
 
     // ---- About / version display (oscilloscope beam trace with phosphor decay) ----
@@ -1219,11 +1334,113 @@ private:
         }
     }
 
+    // ---- Nav bar (shared across all modes) ----
+    void paintNavBar(juce::Graphics& g, int w, int h, int contentH, juce::Colour dim)
+    {
+        int navY = contentH;
+        int navH = h - navY;
+        int arrowW = 14; // click zone for arrows
+
+        // Hover highlight
+        if (mNavHover >= 0)
+        {
+            g.setColour(juce::Colour(0, 40, 0));
+            if (mNavHover == 0)
+                g.fillRect(0, navY, arrowW, navH);
+            else
+                g.fillRect(w - arrowW, navY, arrowW, navH);
+        }
+
+        // Top border
+        g.setColour(cGrid());
+        g.fillRect(0, navY, w, 1);
+
+        // < arrow
+        g.setColour(dim);
+        int ay = navY + navH / 2;
+        g.drawLine(5.f, static_cast<float>(ay - 3), 2.f, static_cast<float>(ay), 1.f);
+        g.drawLine(2.f, static_cast<float>(ay), 5.f, static_cast<float>(ay + 3), 1.f);
+
+        // > arrow
+        float rx = static_cast<float>(w - 5);
+        g.drawLine(rx, static_cast<float>(ay - 3), rx + 3.f, static_cast<float>(ay), 1.f);
+        g.drawLine(rx + 3.f, static_cast<float>(ay), rx, static_cast<float>(ay + 3), 1.f);
+
+        // Center label
+        juce::String label = navLabel();
+        g.setColour(dim);
+        g.setFont(juce::FontOptions(8.f));
+        g.drawText(label, arrowW, navY, w - arrowW * 2, navH, juce::Justification::centred);
+    }
+
+    juce::String navLabel() const
+    {
+        switch (mScaleIdx)
+        {
+            case 0: {
+                if (mNavPeakDb > -100.f)
+                {
+                    juce::String db = juce::String(mNavPeakDb, 1) + " dB";
+                    return "WAVEFORM " + db.paddedLeft(' ', 9);
+                }
+                return "WAVEFORM";
+            }
+            case 1: return "SPECTOGRAM";
+            case 2: return "ENVELOPE";
+            case 3: {
+                if (mNavVcfHz > 0.f)
+                {
+                    juce::String hz;
+                    if (mNavVcfHz >= 1000.f)
+                        hz = juce::String(mNavVcfHz / 1000.f, 2) + " kHz";
+                    else
+                        hz = juce::String(juce::roundToInt(mNavVcfHz)) + " Hz";
+                    return "VCF " + hz.paddedLeft(' ', 9);
+                }
+                return "VCF";
+            }
+            case 4: return "PATCH BANK";
+            case 5: return "ABOUT";
+            default: return "";
+        }
+    }
+
+    float mNavPeakDb = -100.f;  // cached from waveform paint
+    float mNavVcfHz = 0.f;      // cached from VCF paint
+
+    int mNavHover = -1; // 0=left arrow, 1=right arrow, -1=none
+
+    // Interactive scope drag state
+    enum { kDragNone, kDragWaveform, kDragVCF, kDragADSR };
+    int mScopeDragMode = kDragNone;
+    float mDragStartVal[2] = {};
+    int mAdsrDragParam = kEnvA;
+    // ADSR boundary positions (normalized 0-1), cached by paintADSR
+    float mAdsrBoundAD = 0.f, mAdsrBoundDS = 0.f, mAdsrBoundSR = 0.f;
+    float mAdsrBoundEnd = 1.f;  // release end position, cached by paintADSR
+    float mAdsrSustainY = 0.5f; // normalized Y of sustain level, cached by paintADSR
+
+    // Hit-test ADSR targets. Returns param index or -1.
+    // Vertical lines (A/D/R boundaries) use left/right drag.
+    // Sustain horizontal segment uses up/down drag.
+    int adsrHitTest(float xNorm, float yNorm, float hitZone) const
+    {
+        // Check vertical boundary lines first
+        if (fabsf(xNorm - mAdsrBoundAD) < hitZone) return kEnvA;
+        if (fabsf(xNorm - mAdsrBoundDS) < hitZone) return kEnvD;
+        // Release: near the SR boundary line (3rd line)
+        if (fabsf(xNorm - mAdsrBoundSR) < hitZone) return kEnvR;
+        // Sustain: horizontal line between DS and SR boundaries
+        if (xNorm > mAdsrBoundDS + hitZone && xNorm < mAdsrBoundSR - hitZone
+            && fabsf(yNorm - mAdsrSustainY) < hitZone * 3.f)
+            return kEnvS;
+        return -1;
+    }
+
     static constexpr int kNumModes = 6; // 0: waveform, 1: spectrum, 2: ADSR, 3: VCF, 4: patch bank, 5: about
     int mScaleIdx = 0;
     int mPrePatchBankMode = 0; // mode to return to when toggling patch bank off
     int mPatchBankHover = -1;  // hovered patch index, or -1
-    int mPBNavHover = -1;      // hovered nav button: 0=left, 1=right, -1=none
 
     // Bouncing ball state
     bool  mBallActive = false;

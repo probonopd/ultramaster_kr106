@@ -73,4 +73,80 @@ private:
 
     void showVarianceSheet();
     void showQwertyDiagram();
+
+    // Click debugger for AU hit-test investigation
+    class ClickDebugger : public juce::MouseListener
+    {
+    public:
+        juce::Point<int>& lastClickRef;
+        explicit ClickDebugger(juce::Component& rootIn, juce::Point<int>& clickRef)
+            : root(rootIn), lastClickRef(clickRef)
+        {
+            auto logFile = KR106PresetManager::getAppDataDir()
+                             .getChildFile("KR106-clicks.log");
+            log = std::make_unique<juce::FileLogger>(logFile, "KR-106 click debug", 0);
+            log->logMessage("KR-106 " JucePlugin_VersionString
+                " / " + juce::SystemStats::getOperatingSystemName()
+                + " / host: " + juce::PluginHostType().getHostDescription()
+                + " / editor size: " + juce::String(root.getWidth()) + "x" + juce::String(root.getHeight()));
+        }
+        void logDirect(juce::Point<int> pos)
+        {
+            log->logMessage("  [editor mouseDown] root: " + juce::String(pos.x) + ", " + juce::String(pos.y));
+        }
+
+        void mouseDown(const juce::MouseEvent& e) override
+        {
+            const auto rootPos = e.getEventRelativeTo(&root).getPosition();
+            lastClickRef = rootPos;
+            root.repaint();
+            log->logMessage("=== CLICK (listener) ===");
+            log->logMessage("  screen:     " + juce::String(e.getScreenPosition().x) + ", " + juce::String(e.getScreenPosition().y));
+            log->logMessage("  root:       " + juce::String(rootPos.x) + ", " + juce::String(rootPos.y));
+            log->logMessage("  root size:  " + juce::String(root.getWidth()) + " x " + juce::String(root.getHeight()));
+            log->logMessage("  originator: " + describe(e.eventComponent));
+            if (auto* hit = root.getComponentAt(rootPos))
+            {
+                log->logMessage("  hit test:   " + describe(hit));
+                int depth = 0;
+                for (auto* c = hit; c != nullptr; c = c->getParentComponent())
+                {
+                    bool selfI = false, childI = false;
+                    c->getInterceptsMouseClicks(selfI, childI);
+                    log->logMessage("    [" + juce::String(depth++) + "] " + describe(c)
+                        + "  bounds=" + c->getBounds().toString()
+                        + "  self=" + juce::String((int)selfI) + "  child=" + juce::String((int)childI)
+                        + "  visible=" + juce::String((int)c->isVisible()));
+                    if (c == &root) break;
+                }
+            }
+            else
+                log->logMessage("  hit test:   <nothing>");
+        }
+    private:
+        static juce::String describe(juce::Component* c)
+        {
+            if (!c) return "<null>";
+            auto name = c->getName();
+            if (name.isEmpty()) name = "<unnamed>";
+            return name + " (" + juce::String(typeid(*c).name()) + ")";
+        }
+        juce::Component& root;
+        std::unique_ptr<juce::FileLogger> log;
+    };
+    std::unique_ptr<ClickDebugger> mClickDebugger;
+    bool mClickDebugEnabled = false;
+
+    // Visual click marker
+    juce::Point<int> mLastClickPoint { -1, -1 };
+    void paintOverChildren(juce::Graphics& g) override
+    {
+        if (mClickDebugEnabled && mLastClickPoint.x >= 0)
+        {
+            g.setColour(juce::Colours::magenta);
+            g.fillEllipse((float)mLastClickPoint.x - 6, (float)mLastClickPoint.y - 6, 12, 12);
+            g.setColour(juce::Colours::white);
+            g.drawEllipse((float)mLastClickPoint.x - 6, (float)mLastClickPoint.y - 6, 12, 12, 1);
+        }
+    }
 };

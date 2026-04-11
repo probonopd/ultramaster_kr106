@@ -157,9 +157,13 @@ struct BBDLine {
   // Matched anti-aliasing + reconstruction filter pair
   BBDFilter mPreFilter;
   BBDFilter mPostFilter;
-  static constexpr float kBBDSatDrive = 2.58f;  // measured J6 hardware soft saturation
+
+  // calibrated for DSP signal levels (matches hardware -0.88 dB 
+  // compression between 1 voice and 6 voice saw+pulse+sub+noise)
+  static constexpr float kBBDSatDrive = 0.065f;  
 
   float mSampleRate = 44100.f;
+
 
   void Init(float sampleRate)
   {
@@ -216,21 +220,26 @@ struct BBDLine {
   {
     // 1. Pre-filter (matched anti-aliasing stage, Tr13/Tr14 model)
    float filtered = mPreFilter.Process(input);
-   float sat = tanhf(filtered * kBBDSatDrive) / kBBDSatDrive;  // BBD saturates its input
 
-    // 2. Write to delay buffer
-    mBuf[mWPos & mMask] = filtered;
+   // BBD saturates its input? Still not sure if this actually happens in a real juno
+   // peoiple talk about it, can't replicate it with unison 6 voices on my Juno 6
+   // so not implemented for now
+   // float sat = tanhf(filtered * kBBDSatDrive) / kBBDSatDrive;
 
-    // 3. Read with Hermite interpolation at fractional position
-    float wet = ReadHermite(delaySamples);
 
-    // 4. Advance write position
-    mWPos = (mWPos + 1) & mMask;
+   // 2. Write to delay buffer
+   mBuf[mWPos & mMask] = filtered;
 
-    // 5. Post-filter (matched reconstruction stage, Tr15/Tr16 model)
-    float out = mPostFilter.Process(wet);
+   // 3. Read with Hermite interpolation at fractional position
+   float wet = ReadHermite(delaySamples);
 
-    return out;
+   // 4. Advance write position
+   mWPos = (mWPos + 1) & mMask;
+
+   // 5. Post-filter (matched reconstruction stage, Tr15/Tr16 model)
+   float out = mPostFilter.Process(wet);
+
+   return out;
   }
 };
 

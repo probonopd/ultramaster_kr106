@@ -303,6 +303,14 @@ void KR106Editor::applyScale(float s)
 
 void KR106Editor::mouseDown(const juce::MouseEvent& e)
 {
+    if (mClickDebugEnabled && mClickDebugger)
+    {
+        auto pos = e.getEventRelativeTo(this).getPosition();
+        mLastClickPoint = pos;
+        mClickDebugger->logDirect(pos);
+        repaint();
+    }
+
     // Cancel MIDI learn if active
     if (mProcessor.mMidiLearnParam.load(std::memory_order_relaxed) >= 0)
     {
@@ -344,6 +352,7 @@ void KR106Editor::showSettingsMenu()
     items.push_back(KR106MenuItem::sep());
     items.push_back(KR106MenuItem::makeAction(40, "Component Variance Editor"));
     items.push_back(KR106MenuItem::makeAction(41, "Keyboard Shortcuts"));
+    items.push_back(KR106MenuItem::item(42, "Click Debug Mode",          true, mClickDebugEnabled));
 
     mSettingsMenu = std::make_unique<KR106MenuSheet>(std::move(items), mMenuTypeface,
         [this](int r)
@@ -388,6 +397,25 @@ void KR106Editor::showSettingsMenu()
                 mSettingsMenu.reset();
                 showQwertyDiagram();
                 return;
+            }
+            if (r == 42)
+            {
+                mClickDebugEnabled = !mClickDebugEnabled;
+                if (mClickDebugEnabled && !mClickDebugger)
+                {
+                    mClickDebugger = std::make_unique<ClickDebugger>(*this, mLastClickPoint);
+                    addMouseListener(mClickDebugger.get(), true);
+                }
+                else if (!mClickDebugEnabled)
+                {
+                    if (mClickDebugger)
+                    {
+                        removeMouseListener(mClickDebugger.get());
+                        mClickDebugger.reset();
+                    }
+                    mLastClickPoint = { -1, -1 };
+                    repaint();
+                }
             }
             mProcessor.saveGlobalSettings();
         }, 12);

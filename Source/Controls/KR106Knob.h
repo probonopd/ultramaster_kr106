@@ -71,7 +71,7 @@ public:
 
     void mouseEnter(const juce::MouseEvent&) override
     {
-        if (mTooltip && !mDragging)
+        if (mTooltip && !mDragging && !mEditor)
         {
             updateCCLine();
             mTooltip->show(mParam, this);
@@ -81,6 +81,11 @@ public:
     void mouseExit(const juce::MouseEvent&) override
     {
         if (mTooltip && !mDragging) mTooltip->hide();
+    }
+
+    void mouseMove(const juce::MouseEvent& e) override
+    {
+        applyCursorWorkaround(e);
     }
 
     void mouseDown(const juce::MouseEvent& e) override
@@ -108,10 +113,12 @@ public:
         if (mTooltip) mTooltip->show(mParam, this);
         setMouseCursor(juce::MouseCursor::NoCursor);
         e.source.enableUnboundedMouseMovement(true);
+        if (isAppleHost()) mCursorDirty = true;
     }
 
     void mouseDrag(const juce::MouseEvent& e) override
     {
+        applyCursorWorkaround(e);
         if (!mParam) return;
 
         float offsetY = (float)e.getOffsetFromDragStart().y;
@@ -195,6 +202,7 @@ public:
         // Warp cursor to centre of knob so it appears on the control after release
         auto screenPos = localPointToGlobal(juce::Point<int>(getWidth() / 2, getHeight() / 2));
         juce::Desktop::getInstance().getMainMouseSource().setScreenPosition(screenPos.toFloat());
+        if (isAppleHost()) mCursorDirty = true;
     }
 
     void updateCCLine()
@@ -265,5 +273,17 @@ private:
     float mAccumVal = 0.f;
     float mLastRawDelta = 0.f;
     bool mDragging = false;
+    bool mCursorDirty = false;
     std::unique_ptr<juce::TextEditor> mEditor;
+
+    void applyCursorWorkaround(const juce::MouseEvent& e)
+    {
+        if (!mCursorDirty) return;
+        mCursorDirty = false;
+        if (auto* source = juce::Desktop::getInstance().getMouseSource(e.source.getIndex()))
+        {
+            source->showMouseCursor(getMouseCursor());
+            source->forceMouseCursorUpdate();
+        }
+    }
 };

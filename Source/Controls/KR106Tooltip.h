@@ -3,6 +3,18 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 
+// Apple AU hosts (Logic, GarageBand) have a long-standing bug where
+// [NSCursor set] succeeds but the visual cursor doesn't update until
+// the mouse leaves the component. Workaround: force a cursor refresh
+// on the next mouse move after hiding/showing the cursor.
+inline bool isAppleHost()
+{
+    static const bool apple = juce::PluginHostType().getHostDescription()
+        && juce::String(juce::PluginHostType().getHostDescription())
+               .containsIgnoreCase("Apple");
+    return apple;
+}
+
 // Lightweight tooltip overlay — shows formatted parameter value during drag.
 // Owned by KR106Editor, passed to sliders/knobs as a raw pointer.
 class KR106Tooltip : public juce::Component

@@ -101,7 +101,7 @@ public:
 
   void mouseEnter(const juce::MouseEvent&) override
   {
-    if (mTooltip && !mDragging)
+    if (mTooltip && !mDragging && !mEditor)
     {
       updateCCLine();
       mTooltip->show(mParam, this);
@@ -111,6 +111,11 @@ public:
   void mouseExit(const juce::MouseEvent&) override
   {
     if (mTooltip && !mDragging) mTooltip->hide();
+  }
+
+  void mouseMove(const juce::MouseEvent& e) override
+  {
+    applyCursorWorkaround(e);
   }
 
   void mouseDown(const juce::MouseEvent& e) override
@@ -135,10 +140,12 @@ public:
     if (mTooltip) mTooltip->show(mParam, this);
     setMouseCursor(juce::MouseCursor::NoCursor);
     e.source.enableUnboundedMouseMovement(true);
+    if (isAppleHost()) mCursorDirty = true;
   }
 
   void mouseDrag(const juce::MouseEvent& e) override
   {
+    applyCursorWorkaround(e);
     if (!mParam) return;
     float dy = static_cast<float>(e.getOffsetFromDragStart().y);
     float increment = dy - mLastRawDY;
@@ -164,14 +171,15 @@ public:
     mDragging = false;
     if (mParam) mParam->endChangeGesture();
     if (mTooltip) mTooltip->hide();
-    setMouseCursor(juce::MouseCursor::NormalCursor);
     e.source.enableUnboundedMouseMovement(false);
+    setMouseCursor(juce::MouseCursor::NormalCursor);
 
     // Warp cursor to the handle so it appears on the control after release
     float val = mParam ? mParam->getValue() : 0.f;
     float fy = std::round(44.f - val * 40.f);
     auto screenPos = localPointToGlobal(juce::Point<int>(9, static_cast<int>(fy)));
     juce::Desktop::getInstance().getMainMouseSource().setScreenPosition(screenPos.toFloat());
+    if (isAppleHost()) mCursorDirty = true;
   }
 
   void mouseDoubleClick(const juce::MouseEvent&) override
@@ -337,6 +345,18 @@ private:
   float mLastRawDY = 0.f;
   bool mDragging = false;
   bool mRightDrag = false;
+  bool mCursorDirty = false;
+
+  void applyCursorWorkaround(const juce::MouseEvent& e)
+  {
+    if (!mCursorDirty) return;
+    mCursorDirty = false;
+    if (auto* source = juce::Desktop::getInstance().getMouseSource(e.source.getIndex()))
+    {
+        source->showMouseCursor(getMouseCursor());
+        source->forceMouseCursorUpdate();
+    }
+  }
 };
 
 // HPF slider: draws tick marks, snaps to 4 positions in J60/J106 mode.
