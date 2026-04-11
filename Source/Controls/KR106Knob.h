@@ -31,6 +31,9 @@ public:
     void setMidiLearn(KR106AudioProcessor* proc, int paramIdx)
     { mProcessor = proc; mParamIdx = paramIdx; }
 
+    void setSnapCenter(bool snap) { mSnapCenter = snap; }
+    void setGearing(float g) { mGearing = g; }
+
     void paint(juce::Graphics& g) override
     {
         float val = mParam ? mParam->getValue() : 0.f;
@@ -132,12 +135,48 @@ public:
         // Cumulative gearing: shift only affects new movement
         // Scale by display DPI so non-retina screens get the same physical throw
         float dpiScale = std::max(1.f, static_cast<float>(getTopLevelComponent()->getDesktopScaleFactor()));
-        float gearing = 127.f;
+        float gearing = mGearing;
         if (e.mods.isCommandDown()) gearing *= 100.f;
         else if (e.mods.isShiftDown()) gearing *= 10.f;
         gearing /= dpiScale;
         mAccumVal = juce::jlimit(0.f, 1.f, mAccumVal + increment / gearing);
         float newVal = mAccumVal;
+
+        // Three-zone center snap: 0-99px = -100..-1 cents,
+        // 100-105px = 0 cents (detent), 106-205px = +1..+100 cents.
+        // Maps the 0..1 accumulator through a piecewise function that
+        // creates a dead zone at center without skipping any values.
+        if (mSnapCenter)
+        {
+            // Accumulator pixel position (0..205 across 0..1 range)
+            float px = mAccumVal * gearing;
+            float half = gearing * 0.5f;       // 102.5
+            float snapHalf = 3.f;              // 3px each side of center
+            float negEnd = half - snapHalf;    // 99.5
+            float posStart = half + snapHalf;  // 105.5
+
+            if (px <= negEnd)
+            {
+                // -100..-1 cents: map 0..99.5 to 0..0.495
+                newVal = (px / negEnd) * 0.495f;
+            }
+            else if (px >= posStart)
+            {
+                // +1..+100 cents: map 105.5..205 to 0.505..1.0
+                newVal = 0.505f + ((px - posStart) / (gearing - posStart)) * 0.495f;
+            }
+            else
+            {
+                newVal = 0.5f; // snap to 0 cents
+                if (!mInSnapZone)
+                {
+                    mAccumVal = 0.5f; // reset once on entry
+                    mInSnapZone = true;
+                }
+            }
+            if (px <= negEnd || px >= posStart)
+                mInSnapZone = false;
+        }
 
         mParam->setValueNotifyingHost(newVal);
         if (mTooltip) mTooltip->update();
@@ -274,6 +313,9 @@ private:
     float mLastRawDelta = 0.f;
     bool mDragging = false;
     bool mCursorDirty = false;
+    bool mSnapCenter = false;
+    bool mInSnapZone = false;
+    float mGearing = 127.f;
     std::unique_ptr<juce::TextEditor> mEditor;
 
     void applyCursorWorkaround(const juce::MouseEvent& e)

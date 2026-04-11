@@ -94,6 +94,8 @@ KR106Editor::KR106Editor(KR106AudioProcessor& p)
     // for MIDI learn tab order after Chorus II (end of synth panel).
     auto* kTuningKnob = new KR106Knob(param(kTuning), smallKnob, tip, 32);
     kTuningKnob->setMidiLearn(&p, kTuning);
+    kTuningKnob->setSnapCenter(true);
+    kTuningKnob->setGearing(205.f); // ~1px/cent, 5px snap zone at center
     add(kTuningKnob, 40, 64, 28, 27);
 
     auto* kMasterVolKnob = new KR106Knob(param(kMasterVol), smallKnob, tip, 32);

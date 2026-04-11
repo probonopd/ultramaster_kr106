@@ -66,6 +66,8 @@ struct ParamValue
   // Tuning offset in cents (-100 to +100)
   static float tuningCents(float slider)
   {
+    // MIDI CC 63 and 64 both snap to 0 cents (symmetric dead zone)
+    if (fabsf(slider) < 0.01f) return 0.f;
     return slider * 100.f;
   }
 
