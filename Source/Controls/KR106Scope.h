@@ -3,6 +3,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_dsp/juce_dsp.h>
 #include "PluginProcessor.h"
+#include "KR106MenuSheet.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -61,7 +62,8 @@ public:
         }
     }
 
-    KR106Scope(KR106AudioProcessor* processor) : mProcessor(processor)
+    KR106Scope(KR106AudioProcessor* processor)
+        : mProcessor(processor)
     {
         setMouseCursor(juce::MouseCursor::PointingHandCursor);
     }
@@ -69,7 +71,7 @@ public:
     void mouseMove(const juce::MouseEvent& e) override
     {
         int ch = getHeight() - kNavH;
-        int arrowW = 14;
+        int arrowW = kNavH;
 
         // Nav bar hover (all modes)
         int prevNav = mNavHover;
@@ -161,7 +163,7 @@ public:
         // Nav bar click: all modes
         if (e.y >= ch)
         {
-            int arrowW = 14;
+            int arrowW = kNavH;
             if (e.x < arrowW)
                 cycleMode(-1);
             else if (e.x >= getWidth() - arrowW)
@@ -327,6 +329,8 @@ public:
             mScopeDragMode = kDragNone;
         }
     }
+
+    void setTypeface(juce::Typeface::Ptr tf) { mTypeface = tf; }
 
     void cycleMode(int delta)
     {
@@ -563,13 +567,7 @@ private:
                 g.strokePath(pathL, juce::PathStrokeType(strokeWidth(), juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
             }
 
-            // Peak amplitude readout (bottom-right corner)
-            float peakDb = peakL > 1e-10f ? 20.f * log10f(peakL) : -200.f;
-            if (peakDb >= 0.f)
-                mClipHoldFrames = 30; // ~1 second at 30 Hz refresh
-            else if (mClipHoldFrames > 0)
-                mClipHoldFrames--;
-            mNavPeakDb = peakDb;
+            mNavPeakDb = peakL > 1e-10f ? 20.f * log10f(peakL) : -200.f;
         }
     }
 
@@ -578,6 +576,19 @@ private:
                        juce::Colour dim, juce::Colour mid, juce::Colour bright)
     {
         ensureHannWindow();
+
+        // Measure peak for nav bar dB readout
+        {
+            float peak = 0.f;
+            int available = std::min(mSamplesAvail, kFFTSize);
+            for (int i = 0; i < available; i++)
+            {
+                int idx = (mRingWritePos - available + i + RING_SIZE) % RING_SIZE;
+                float s = fabsf(mRing[idx]);
+                if (s > peak) peak = s;
+            }
+            mNavPeakDb = peak > 1e-10f ? 20.f * log10f(peak) : -200.f;
+        }
 
         // Fill FFT input from ring buffer (most recent samples)
         memset(mFFTData, 0, sizeof(mFFTData));
@@ -1232,31 +1243,23 @@ private:
         int num = mProcessor->getNumPrograms();
         int cur = mProcessor->getCurrentProgram();
 
-        // Grid lines
+        // Current patch cell (drawn first, grid lines on top for clean edges)
+        if (cur >= 0 && cur < num)
+        {
+            int cc = cur % kPBCols, cr = cur / kPBCols;
+            g.setColour(bright);
+            g.fillRect(cc * kPBCell, cr * kPBCell, kPBCell + 1, kPBCell + 1);
+        }
+
+        // Grid lines (on top of fill)
         g.setColour(cGrid());
         for (int c = 1; c < kPBCols; c++)
             g.fillRect(c * kPBCell, 0, 1, kPBGridH);
         for (int r = 1; r <= kPBRows; r++)
             g.fillRect(0, r * kPBCell, kPBCols * kPBCell, 1);
-
-        // Fill cells
-        for (int r = 0; r < kPBRows; r++)
-        {
-            for (int c = 0; c < kPBCols; c++)
-            {
-                int idx = r * kPBCols + c;
-                if (idx >= num) break;
-
-                int x = c * kPBCell;
-                int y = r * kPBCell;
-
-                if (idx == cur)
-                {
-                    g.setColour(bright);
-                    g.fillRect(x + 1, y + 1, kPBCell - 1, kPBCell - 1);
-                }
-            }
-        }
+        // Outer edges
+        g.fillRect(0, 0, kPBCols * kPBCell, 1);
+        g.fillRect(0, 0, 1, kPBGridH);
 
         // Drag vector (Bresenham on grid)
         if (mDragging)
@@ -1339,38 +1342,47 @@ private:
     {
         int navY = contentH;
         int navH = h - navY;
-        int arrowW = 14; // click zone for arrows
+        int arrowW = navH; // square buttons
+
+        // Top border
+        g.setColour(cGrid());
+        g.fillRect(0, navY, w, 1);
+
+        // Vertical dividers
+        g.fillRect(arrowW, navY, 1, navH);
+        g.fillRect(w - arrowW, navY, 1, navH);
 
         // Hover highlight
         if (mNavHover >= 0)
         {
             g.setColour(juce::Colour(0, 40, 0));
             if (mNavHover == 0)
-                g.fillRect(0, navY, arrowW, navH);
+                g.fillRect(0, navY + 1, arrowW, navH - 1);
             else
-                g.fillRect(w - arrowW, navY, arrowW, navH);
+                g.fillRect(w - arrowW + 1, navY + 1, arrowW - 1, navH - 1);
         }
-
-        // Top border
-        g.setColour(cGrid());
-        g.fillRect(0, navY, w, 1);
 
         // < arrow
         g.setColour(dim);
-        int ay = navY + navH / 2;
-        g.drawLine(5.f, static_cast<float>(ay - 3), 2.f, static_cast<float>(ay), 1.f);
-        g.drawLine(2.f, static_cast<float>(ay), 5.f, static_cast<float>(ay + 3), 1.f);
+        float ay = navY + navH * 0.5f + 0.5f;
+        float axL = arrowW * 0.5f - 1.f;
+        g.drawLine(axL + 2.f, ay - 3.f, axL - 1.f, ay, 1.f);
+        g.drawLine(axL - 1.f, ay, axL + 2.f, ay + 3.f, 1.f);
 
         // > arrow
-        float rx = static_cast<float>(w - 5);
-        g.drawLine(rx, static_cast<float>(ay - 3), rx + 3.f, static_cast<float>(ay), 1.f);
-        g.drawLine(rx + 3.f, static_cast<float>(ay), rx, static_cast<float>(ay + 3), 1.f);
+        float axR = w - arrowW * 0.5f + 1.f;
+        g.drawLine(axR - 2.f, ay - 3.f, axR + 1.f, ay, 1.f);
+        g.drawLine(axR + 1.f, ay, axR - 2.f, ay + 3.f, 1.f);
 
-        // Center label
+        // Center label (Segment14 LED font if available)
         juce::String label = navLabel();
         g.setColour(dim);
-        g.setFont(juce::FontOptions(8.f));
-        g.drawText(label, arrowW, navY, w - arrowW * 2, navH, juce::Justification::centred);
+        if (mTypeface)
+            g.setFont(juce::Font(juce::FontOptions(mTypeface)
+                .withMetricsKind(juce::TypefaceMetricsKind::legacy)).withHeight(6.f));
+        else
+            g.setFont(juce::FontOptions(6.f));
+        g.drawText(label, arrowW, navY + 1, w - arrowW * 2, navH, juce::Justification::centred);
     }
 
     juce::String navLabel() const
@@ -1380,22 +1392,29 @@ private:
             case 0: {
                 if (mNavPeakDb > -100.f)
                 {
-                    juce::String db = juce::String(mNavPeakDb, 1) + " dB";
-                    return "WAVEFORM " + db.paddedLeft(' ', 9);
+                    juce::String db = juce::String(juce::roundToInt(mNavPeakDb)) + "dB";
+                    return "WAVEFORM " + db.paddedLeft(' ', 6);
                 }
                 return "WAVEFORM";
             }
-            case 1: return "SPECTOGRAM";
-            case 2: return "ENVELOPE";
+            case 1: {
+                if (mNavPeakDb > -100.f)
+                {
+                    juce::String db = juce::String(juce::roundToInt(mNavPeakDb)) + "dB";
+                    return "SPECTROGRAPH " + db.paddedLeft(' ', 6);
+                }
+                return "SPECTROGRAPH";
+            }
+            case 2: return "ADSR ENVELOPE";
             case 3: {
                 if (mNavVcfHz > 0.f)
                 {
                     juce::String hz;
                     if (mNavVcfHz >= 1000.f)
-                        hz = juce::String(mNavVcfHz / 1000.f, 2) + " kHz";
+                        hz = juce::String(juce::roundToInt(mNavVcfHz / 1000.f)) + "kHz";
                     else
-                        hz = juce::String(juce::roundToInt(mNavVcfHz)) + " Hz";
-                    return "VCF " + hz.paddedLeft(' ', 9);
+                        hz = juce::String(juce::roundToInt(mNavVcfHz)) + "Hz";
+                    return "VCF " + hz.paddedLeft(' ', 7);
                 }
                 return "VCF";
             }
@@ -1456,6 +1475,7 @@ private:
     int  mDragEndX = 0, mDragEndY = 0;       // current mouse position (pixels)
 
     KR106AudioProcessor* mProcessor = nullptr;
+    juce::Typeface::Ptr mTypeface;
 
     // Local ring buffers (copied from processor)
     float mRing[RING_SIZE] = {};
@@ -1472,7 +1492,6 @@ private:
     bool mHasData = false;
 
     // Clip indicator hold (bright green for ~1 second after clipping)
-    int mClipHoldFrames = 0;
 
     // About screen beam trace state
     struct AboutPixel { int16_t x, y; };

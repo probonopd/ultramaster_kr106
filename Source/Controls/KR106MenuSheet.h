@@ -33,7 +33,7 @@ namespace KR106Theme
         if (active)
         {
             g.setColour(bright());
-            g.fillRect(x+1, y+1, w-1, h-1);
+            g.fillRect(x, y, w, h);
             g.setColour(bg());
         }
         else
@@ -41,7 +41,7 @@ namespace KR106Theme
             if (hover)
             {
                 g.setColour(hoverBg());
-                g.fillRect(x+1, y+1, w-1, h-1);
+                g.fillRect(x, y, w, h);
             }
             g.setColour(bright());
         }
@@ -117,8 +117,8 @@ public:
         if (!parent) return;
         setBounds(parent->getLocalBounds());
         mMenuBounds = menuBounds;
-        setAlwaysOnTop(true);
         setVisible(true);
+        toFront(false);
         grabKeyboardFocus();
     }
 
@@ -212,12 +212,14 @@ public:
                 bool hover = (i == mHoverIndex && item.enabled);
                 juce::String label = anyTicked ? (item.ticked ? ("* " + item.text) : ("  " + item.text)) : item.text;
 
-                // Extend hover fill into padding for first/last items
-                if (hover && item.enabled && (i == firstItem || i == lastItem))
+                // Extend hover into padding for first/last items
+                if (hover && item.enabled)
                 {
                     g.setColour(KR106Theme::hoverBg());
-                    if (i == firstItem) g.fillRect(colX, y - kPadY, colW, kPadY);
-                    if (i == lastItem)  g.fillRect(colX, y + kRowH, colW, kPadY);
+                    if (i == firstItem)
+                        g.fillRect(colX, mMenuBounds.getY() + 1, colW, kPadY);
+                    if (i == lastItem)
+                        g.fillRect(colX, y + kRowH, colW, kPadY);
                 }
 
                 if (!item.enabled)
@@ -227,7 +229,13 @@ public:
                 }
                 else
                 {
-                    KR106Theme::drawCell(g, label, colX, y, colW, kRowH, hover, false);
+                    if (hover)
+                    {
+                        g.setColour(KR106Theme::hoverBg());
+                        g.fillRect(colX, y, colW, kRowH);
+                    }
+                    g.setColour(KR106Theme::bright());
+                    g.drawSingleLineText(label, colX + kPadX, y + kRowH - KR106Theme::kTextOffset);
                 }
 
                 y += kRowH;
@@ -239,11 +247,11 @@ public:
             int w1 = columnWidth(0, mColumnBreak);
             int x0 = mMenuBounds.getX();
             paintColumn(0, mColumnBreak, x0, w1);
-            // Divider
+            paintColumn(mColumnBreak, static_cast<int>(mItems.size()), x0 + w1,
+                        mMenuBounds.getWidth() - w1);
+            // Divider (on top of hover fills)
             g.setColour(KR106Theme::border());
             g.fillRect(x0 + w1, mMenuBounds.getY(), 1, mMenuBounds.getHeight());
-            paintColumn(mColumnBreak, static_cast<int>(mItems.size()), x0 + w1 + 1,
-                        mMenuBounds.getWidth() - w1 - 1);
         }
         else
         {
@@ -251,6 +259,7 @@ public:
                         mMenuBounds.getWidth());
         }
 
+        // Border (on top of everything)
         g.setColour(KR106Theme::border());
         g.drawRect(mMenuBounds);
     }

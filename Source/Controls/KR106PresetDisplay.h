@@ -23,7 +23,6 @@ public:
         : mProcessor(proc), mTypeface(typeface), mOnClose(std::move(onClose))
     {
         setWantsKeyboardFocus(true);
-        setAlwaysOnTop(true);
     }
 
     void paint(juce::Graphics& g) override
@@ -40,6 +39,43 @@ public:
         g.setFont(KR106Theme::ledFont(mTypeface));
 
         // Grid lines
+        // Preset entries (drawn before grid lines so grid renders on top)
+        bool searching = mSearchString.isNotEmpty();
+        for (int i = 0; i < num && i < kCols * kRows; i++)
+        {
+            int col = i % kCols;
+            int row = i / kCols;
+            int x = col * colW;
+            int y = juce::roundToInt(row * rh);
+            int cellW = (col == kCols - 1) ? (getWidth() - x) : colW;
+            int cellH = juce::roundToInt((row + 1) * rh) - y;
+
+            juce::String name = mProcessor->getProgramName(i);
+            bool matches = !searching || name.containsIgnoreCase(mSearchString);
+
+            if (matches)
+            {
+                KR106Theme::drawCell(g, name.substring(0, 16), x, y, cellW, cellH,
+                                     i == mHoverIndex, i == current);
+            }
+            else
+            {
+                // Dimmed: no hover highlight, disabled text color
+                if (i == current)
+                {
+                    g.setColour(KR106Theme::disabled());
+                    g.fillRect(x, y, cellW, cellH);
+                    g.setColour(KR106Theme::bg());
+                }
+                else
+                {
+                    g.setColour(KR106Theme::disabled());
+                }
+                g.drawSingleLineText(name.substring(0, 16), x + kPadX, y + cellH - KR106Theme::kTextOffset);
+            }
+        }
+
+        // Grid lines (on top of cell fills)
         g.setColour(KR106Theme::grid());
         for (int row = 0; row <= kRows; row++)
         {
@@ -50,41 +86,6 @@ public:
         {
             int x = col * colW;
             g.drawVerticalLine(x, 0.f, static_cast<float>(getHeight()));
-        }
-
-        // Preset entries
-        bool searching = mSearchString.isNotEmpty();
-        for (int i = 0; i < num && i < kCols * kRows; i++)
-        {
-            int col = i % kCols;
-            int row = i / kCols;
-            int x = col * colW;
-            int y = juce::roundToInt(row * rh);
-            int cellH = juce::roundToInt((row + 1) * rh) - y;
-
-            juce::String name = mProcessor->getProgramName(i);
-            bool matches = !searching || name.containsIgnoreCase(mSearchString);
-
-            if (matches)
-            {
-                KR106Theme::drawCell(g, name.substring(0, 16), x, y, colW, cellH,
-                                     i == mHoverIndex, i == current);
-            }
-            else
-            {
-                // Dimmed: no hover highlight, disabled text color
-                if (i == current)
-                {
-                    g.setColour(KR106Theme::disabled());
-                    g.fillRect(x + 1, y + 1, colW - 1, cellH - 1);
-                    g.setColour(KR106Theme::bg());
-                }
-                else
-                {
-                    g.setColour(KR106Theme::disabled());
-                }
-                g.drawSingleLineText(name.substring(0, 16), x + kPadX, y + cellH - KR106Theme::kTextOffset);
-            }
         }
 
         g.setColour(KR106Theme::border());
@@ -117,15 +118,39 @@ public:
 
     void mouseDown(const juce::MouseEvent& e) override
     {
+        // Debug logging for AU click investigation
+        auto logFile = KR106PresetManager::getAppDataDir().getChildFile("KR106-clicks.log");
+        juce::FileLogger clickLog(logFile, "", 0);
+        {
+            int gw = getWidth(), gh = getHeight();
+            float cellW = gw / (float)kCols, cellH = gh / (float)kRows;
+            int col = (int)(e.x / cellW), row = (int)(e.y / cellH);
+            int presetIdx = row * kCols + col;
+            int hitIdx = hitTest(e.getPosition());
+            auto cr = closeRect();
+            clickLog.logMessage(juce::String::formatted(
+                "PresetSheet::mouseDown e.x=%d e.y=%d  size=%dx%d  "
+                "cellW=%.3f cellH=%.3f  col=%d row=%d  presetIndex=%d  hitTest=%d  "
+                "closeRect=[%d,%d,%d,%d]",
+                e.x, e.y, gw, gh, cellW, cellH, col, row, presetIdx, hitIdx,
+                cr.getX(), cr.getY(), cr.getWidth(), cr.getHeight()));
+        }
+
         if (closeRect().contains(e.getPosition()))
         {
+            clickLog.logMessage("  -> CLOSE RECT branch, dismissing");
             dismiss();
             return;
         }
         int idx = hitTest(e.getPosition());
         if (idx >= 0)
         {
+            clickLog.logMessage(juce::String::formatted("  -> setCurrentProgram(%d)", idx));
             mProcessor->setCurrentProgram(idx);
+        }
+        else
+        {
+            clickLog.logMessage("  -> hitTest returned -1, no preset loaded");
         }
         dismiss();
     }
@@ -432,6 +457,7 @@ private:
 
         mSheet->setBounds(0, sheetY, sheetW, sheetH);
         target->addAndMakeVisible(mSheet.get());
+        mSheet->toFront(false);
         mSheet->grabKeyboardFocus();
     }
 

@@ -25,7 +25,6 @@ public:
         : mProcessor(proc), mTypeface(typeface), mOnClose(std::move(onClose))
     {
         setWantsKeyboardFocus(true);
-        setAlwaysOnTop(true);
         readFromVoices();
         if (mProcessor)
         {
@@ -109,9 +108,9 @@ public:
                                      x0 + cw - 8, y + cellH - 2,
                                      juce::Justification::right);
             };
-            paintNoiseCell(-5, 0,          cellW,         "ANALOG", mAnalogNoiseKnob);
-            paintNoiseCell(-6, cellW,      cellW,         "MAINS",  mMainsNoiseKnob);
-            paintNoiseCell(-7, cellW * 2,  w - cellW * 2, "CLOCK",  mClockNoiseKnob);
+            paintNoiseCell(-5, 0,          cellW,         "ANALOG NOISE", mAnalogNoiseKnob);
+            paintNoiseCell(-6, cellW,      cellW,         "MAINS NOISE",  mMainsNoiseKnob);
+            paintNoiseCell(-7, cellW * 2,  w - cellW * 2, "CLOCK NOISE",  mClockNoiseKnob);
         }
 
         // Header row (inverted: bright bg, black text)

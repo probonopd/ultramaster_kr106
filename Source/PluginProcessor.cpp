@@ -1506,6 +1506,7 @@ void KR106AudioProcessor::loadGlobalSettings()
 
 void KR106AudioProcessor::saveGlobalSettings()
 {
+  KR106PresetManager::saveSetting("settingsVersion", 1);
   KR106PresetManager::saveSetting("uiScale", mUIScale);
   KR106PresetManager::saveSetting("voiceCount", mVoiceCount);
   KR106PresetManager::saveSetting("ignoreVelocity", mIgnoreVelocity);

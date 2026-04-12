@@ -32,6 +32,7 @@ public:
         updateText();
         positionBelow(source);
         setVisible(true);
+        toFront(false);
         repaint();
     }
 
@@ -53,6 +54,7 @@ public:
         mText = text;
         positionBelow(source);
         setVisible(true);
+        toFront(false);
         repaint();
     }
 

@@ -130,7 +130,7 @@ KR106Editor::KR106Editor(KR106AudioProcessor& p)
     addML(kArpeggio,  new KR106ButtonLED(param(kArpeggio),  1, ledRed, param(kPower), tip), 154, 43, 17, 28);
 
     addML(kArpMode,  new KR106Switch(param(kArpMode),  switchV, 3, tip), 175, 46, 9, 24);
-    addML(kArpRange, new KR106Switch(param(kArpRange), switchV, 3, tip), 212, 46, 9, 24);
+    addML(kArpRange, new KR106Switch(param(kArpRange), switchV, 3, tip), 210, 46, 9, 24);
     mArpRateSlider = new KR106ArpRateSlider(param(kArpRate), param(kArpQuantize), kArpRate, kArpQuantize, tip, sliderHdl, &p.mArpSyncHost);
     addSlider(kArpRate, mArpRateSlider, 227, 33, 19, 49);
 
@@ -235,11 +235,14 @@ KR106Editor::KR106Editor(KR106AudioProcessor& p)
 
     mMenuTypeface = juce::Typeface::createSystemTypefaceFor(
         BinaryData::Segment14_otf, BinaryData::Segment14_otfSize);
+    mScope->setTypeface(mMenuTypeface);
 
     // Tooltip overlay — added last so it paints on top of all controls
     mContent.addAndMakeVisible(mTooltip);
     mTooltip.setVisible(false);
-    mTooltip.setAlwaysOnTop(true);
+    // Note: do NOT use setAlwaysOnTop(true) — it creates a separate native
+    // peer that breaks mouse events in AU hosts on macOS Tahoe.
+    // Use toFront() after addAndMakeVisible instead.
 
     // Enable host drag-resize. Lock aspect ratio so the UI scales uniformly.
     // Host provides resize handles for VST3/AU/LV2/CLAP/standalone.
@@ -471,8 +474,8 @@ void KR106Editor::showQwertyDiagram()
     overlay->onClose = [this]() { mQwertyDiagram.reset(); };
     overlay->diagram.onClose = [this]() { mQwertyDiagram.reset(); };
     overlay->setBounds(0, 0, kBaseWidth, kBaseHeight);
-    overlay->setAlwaysOnTop(true);
     mContent.addAndMakeVisible(overlay);
+    overlay->toFront(false);
     mQwertyDiagram.reset(overlay);
 }
 
