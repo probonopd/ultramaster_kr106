@@ -88,6 +88,7 @@ public:
   float mFwTickStep       = 0.f;   // ticks per sample (kTickRate / sampleRate)
   float mFwEnvNext        = 0.f;   // envelope at current tick
   float mFwEnvSmooth      = 0.f;   // RC-smoothed envelope output
+  float mGateEnvSmooth    = 0.f;   // RC-smoothed gate envelope
   uint16_t mVcfDacNext    = 0;     // current tick's DAC output
   float mVcfDacSmooth     = 0.f;   // RC-smoothed DAC value (before expo conversion)
   float mDacSmoothCoeff   = 0.f;   // one-pole coefficient for DAC/env smoothing
@@ -923,9 +924,11 @@ public:
       float signal = mVCF.Process(oscOut, vcfCPS, mVcfRes);
 
       // --- VCA (BA662 OTA, driven by model-specific exponential converter) ---
+      // RC smooth the gate envelope (same 1ms DAC output filter as ADSR)
+      mGateEnvSmooth += (mADSR.mGateEnv - mGateEnvSmooth) * mDacSmoothCoeff;
       float vcaOut;
       if (mVcaMode)
-        vcaOut = signal * kr106::VCAGain(mADSR.mGateEnv, mModel) * velocity * mVcaGainScale; // Gate mode
+        vcaOut = signal * kr106::VCAGain(mGateEnvSmooth, mModel) * velocity * mVcaGainScale; // Gate mode
       else
         vcaOut = signal * kr106::VCAGain(env, mModel) * velocity * mVcaGainScale; // ADSR mode
 

@@ -316,12 +316,14 @@ struct LFO
           RecalcDelay106();
       }
     }
-    // All models: arm reset when all voices go silent (output 0)
-    // Confirmed on J6 hardware; J60/J106 same behavior.
+    // All models: arm reset when all voices go silent.
+    // Do NOT zero mAmp here -- the ROM keeps $FF5A_lfoDelayEnv at its
+    // current level during release. Zeroing it kills LFO modulation
+    // on the release tail, which doesn't match hardware behavior.
+    // mAmp is reset to 0 on the next note-on (via the mArmed path above).
     if (!gated && mWasGated)
     {
-      mAmp = 0.f;
-      mArmed = true; // suppress ramp until next gate
+      mArmed = true;
     }
 
     mWasGated = gated;

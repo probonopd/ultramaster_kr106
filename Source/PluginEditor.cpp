@@ -357,7 +357,7 @@ void KR106Editor::showSettingsMenu()
     items.push_back(KR106MenuItem::sep());
     items.push_back(KR106MenuItem::makeAction(40, "Component Variance Editor"));
     items.push_back(KR106MenuItem::makeAction(41, "Keyboard Shortcuts"));
-    items.push_back(KR106MenuItem::item(42, "Click Debug Mode",          true, mClickDebugEnabled));
+    // items.push_back(KR106MenuItem::item(42, "Click Debug Mode",          true, mClickDebugEnabled));
 
     mSettingsMenu = std::make_unique<KR106MenuSheet>(std::move(items), mMenuTypeface,
         [this](int r)

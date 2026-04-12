@@ -83,6 +83,9 @@ static constexpr auto kDecRelTable = GenerateDecRelTable();
 struct ADSR
 {
   enum State { kAttack, kDecay, kRelease, kFinished };
+  // Gate mode: hardware snaps VCA fully open/closed in one DAC tick.
+  // BA662 analog slew provides ~1ms smoothing. We model this as a
+  // fast per-sample ramp (32 audio samples ≈ 0.7ms at 44.1k).
   static constexpr float kGateSlope       = 1.f / 32.f;
   static constexpr float kSilence         = 1e-5f;   // -100dB: J6 release termination threshold
   static constexpr float kAttackTarget    = 1.2f;    // RC charge overshoot (hardware comparator)

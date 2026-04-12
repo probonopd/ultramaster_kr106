@@ -148,6 +148,7 @@ struct VCF
     float hfFade;        // dfGain HF rolloff
     float noiseLevel;    // adaptive thermal noise (control-rate)
     float outputScale;   // freq+res dependent output attenuation
+    float otaScale;      // frequency-dependent OTA drive
   } mC;
 
   VCF()
@@ -244,6 +245,10 @@ struct VCF
   static float FreqCompensationClamped(float k, float frq)
   {
     float lowQ = std::max(1.0f, 0.48f * powf(std::max(frq, 1e-6f), -0.12f));
+    // Mid-range boost: hardware IR3109 passband is wider than ideal at
+    // 1-4 kHz. Gaussian bump centered at frq=0.012 (F~75 at 96k/4x).
+    float logdist = logf(std::max(frq, 1e-6f) / 0.012f);
+    lowQ += 0.30f * expf(-logdist * logdist / 1.5f);
     float blend = std::min(k * k * 0.0625f, 1.f);
     return lowQ + blend * (1.f - lowQ);
   }
@@ -277,20 +282,36 @@ struct VCF
 
   static float FreqGain(float frq)
   {
-    float fg = powf(std::max(frq, 1e-6f) * (1.f / 0.00445f), -0.15f);
-    return std::clamp(fg, 0.55f, 1.3f);
+    float fg = powf(std::max(frq, 1e-6f) * (1.f / 0.00445f), -0.10f);
+    return std::clamp(fg, 0.65f, 1.2f);
   }
 
-  static constexpr float kOTAScale = 0.35f;
+  static constexpr float kOTAScaleBase = 0.35f;
+
+  // Frequency-dependent OTA drive: at low bias currents (low cutoff),
+  // the IR3109 OTAs are more linear, producing a shallower rolloff slope.
+  // Measured: HW slope is ~12 dB/oct at F=14 vs ideal 24 dB/oct.
+  // Crossover at frq ~0.005 (240 Hz at 96k). Below that, OTA drive
+  // ramps down, making tanh more linear.
+  static float OTAScaleForFreq(float frq)
+  {
+    float scale = kOTAScaleBase;
+    if (frq < 0.005f)
+    {
+      float blend = std::max(frq / 0.005f, 0.15f);
+      scale *= blend;
+    }
+    return scale;
+  }
 
   // Nonlinear one-pole OTA-C stage: solves y = s + g*tanh(x - y)
   // via one Newton-Raphson iteration from the linear TPT estimate.
-  static float NLStage(float& s, float x, float g, float g1)
+  static float NLStage(float& s, float x, float g, float g1, float otaScale)
   {
     float y = s + g1 * (x - s);
     float diff = x - y;
-    float sd = diff * kOTAScale;
-    float t = OTASat(sd) / kOTAScale;
+    float sd = diff * otaScale;
+    float t = OTASat(sd) / otaScale;
     float f = y - s - g * t;
     float df = 1.f + g * OTASatDeriv(sd);
     y -= f / df;
@@ -367,6 +388,7 @@ struct VCF
     mC.G    = G;
     mC.invDen      = 1.f / (1.f + k * G);
     mC.comp        = InputComp(k, mCacheFreqGain);
+    mC.otaScale    = OTAScaleForFreq(mCacheFrq);
     mC.kFbScale    = 4.20f * std::clamp((k - 3.5f) * 0.8f, 0.3f, 1.f) * fbBoost;
     mC.invKFbScale = 1.f / mC.kFbScale;
 
@@ -479,10 +501,11 @@ private:
     float g1NL = std::min(mC.g1 / dfGain, 0.98f);
     float gNL  = g1NL / (1.f - g1NL);
 
-    float lp1 = NLStage(mS[0], u,   gNL, g1NL);
-    float lp2 = NLStage(mS[1], lp1, gNL, g1NL);
-    float lp3 = NLStage(mS[2], lp2, gNL, g1NL);
-    float lp4 = NLStage(mS[3], lp3, gNL, g1NL);
+    float ota = mC.otaScale;
+    float lp1 = NLStage(mS[0], u,   gNL, g1NL, ota);
+    float lp2 = NLStage(mS[1], lp1, gNL, g1NL, ota);
+    float lp3 = NLStage(mS[2], lp2, gNL, g1NL, ota);
+    float lp4 = NLStage(mS[3], lp3, gNL, g1NL, ota);
 
     // Output gain: InputComp * outputGain preserves passband level (1.22x).
     // Self-osc level calibrated from hardware: ~1.07x pulse at R=127.

@@ -494,6 +494,13 @@ public:
       outputs[0][s] += static_cast<T>(n);
     }
 
+    // Analog bandwidth: models aggregate HF rolloff from IR3109 output,
+    // BA662 VCA, and mixing stage. Measured ~1.2 dB/oct steeper than DSP
+    // from hardware noise sweep at F=127 R=0. 1-pole at 33 kHz gives
+    // ~-1.5 dB at 20 kHz, ~-3.5 dB at 40 kHz, matching the deficit.
+    for (int s = 0; s < nFrames; s++)
+      outputs[0][s] = static_cast<T>(mAnalogBW.process(static_cast<float>(outputs[0][s])));
+
     // VCA level before chorus (matches hardware: VCA IC5 → Chorus BBD)
     for (int s = 0; s < nFrames; s++)
       outputs[0][s] *= static_cast<T>(mVcaLevel);
@@ -537,6 +544,7 @@ public:
     mHPF.SetSampleRate(mSampleRate);
     mHPF.Init();
     mHPF.SetMode(1);
+    mAnalogBW.init(38000.f, static_cast<float>(mSampleRate));
     mChorus.Init(mSampleRate);
     mFloorNoise.Init(mSampleRate); 
     mFloorRipple.SetMainsHz(60.f, mSampleRate);  // 50.f for EU
@@ -593,6 +601,20 @@ public:
   kr106::SawTables mSawTables;
   kr106::LFO mLFO;
   kr106::HPF mHPF;
+
+  // 1-pole TPT lowpass for analog bandwidth modeling
+  struct AnalogBW {
+    float s = 0.f;
+    float g = 0.f; // tan(pi * fc / sr)
+    void init(float fc, float sr) { g = tanf(3.14159265f * fc / sr); }
+    float process(float x) {
+      float v = (x - s) * g / (1.f + g);
+      float y = s + v;
+      s = y + v;
+      return y;
+    }
+  } mAnalogBW;
+
   kr106::Chorus mChorus;
   kr106::Arpeggiator mArp;
 
