@@ -764,9 +764,13 @@ void KR106Editor::paint(juce::Graphics& g)
     // Black fill for any uncovered area (when host allows non-aspect-ratio sizes)
     g.fillAll(juce::Colours::black);
 
-    // Draw @2x background at actual editor dimensions (ground truth)
+    // Draw @2x background at the content-scaled size (matches mContent transform).
+    // Using getWidth()/getHeight() here is wrong because the host may apply its
+    // own DPI scaling (setScaleFactor) on top of our UI scale.
+    float bgW = kBaseWidth * mUIScale;
+    float bgH = kBaseHeight * mUIScale;
     g.drawImage(mBackground,
-                0.f, 0.f, static_cast<float>(getWidth()), static_cast<float>(getHeight()),
+                0.f, 0.f, bgW, bgH,
                 0, 0, mBackground.getWidth(), mBackground.getHeight());
 }
 
