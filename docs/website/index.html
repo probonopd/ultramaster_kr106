@@ -2,90 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=960, initial-scale=1.0">
 <link rel="icon" href="favicon.ico">
 <link rel="stylesheet" href="https://use.typekit.net/siv2osi.css">
 <title>Ultramaster KR-106 — Virtual Analog Synthesizer</title>
+<link rel="stylesheet" href="styles.css">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Oswald:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
-  @font-face { font-family: 'Segment14'; src: url('Segment14.otf') format('opentype'); }
-
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    font-family: 'transducer-condensed', 'Oswald', sans-serif;
-    font-weight: 500;
-    background: #111 url('background.png') center top / cover no-repeat fixed;
-    color: #e8e8e8;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-
-  /* Darken the blueprint so text remains readable */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background: rgba(10, 10, 15, 0.82);
-    z-index: 0;
-  }
-
-  .accent-bar, main, footer { position: relative; z-index: 1; }
-
-  main {
-    max-width: 940px;
-    width: 100%;
-    padding: 1.5rem 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-
-  header {
-    text-align: center;
-    margin: 0 auto 1.2rem;
-    max-width: 940px;
-    width: 100%;
-  }
-
-  h1 {
-    font-family: 'transducer-extended', sans-serif;
-    font-weight: 900;
-    font-size: 2.4rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    margin-bottom: 0.4rem;
-  }
-
-  h1 .white { color: #ffffff; }
-  h1 .red { color: #cc0000; }
-  h1 .blue { color: #2233cc; }
-
-  .tagline {
-    font-size: 1.05rem;
-    color: #999;
-    font-weight: 400;
-  }
-
-  .screenshot {
-    width: 100%;
-    max-width: 940px;
-    margin-bottom: 1rem;
-    display: block;
-  }
-
-  .description {
-    font-size: 1.05rem;
-    line-height: 1.7;
-    color: #ccc;
-    margin-bottom: 1.2rem;
-    text-align: center;
-    max-width: 800px;
-    margin-left: auto;
-    margin-right: auto;
-  }
+  body { background-image: url('background_small.png'); background-size: cover; background-position: center top; background-repeat: no-repeat; background-attachment: fixed; }
 
   .release-info {
     text-align: center;
@@ -93,63 +16,6 @@
     color: #777;
     margin-bottom: 1rem;
     letter-spacing: 0.03em;
-  }
-
-  .downloads {
-    display: flex;
-    gap: 0.8rem;
-    justify-content: center;
-    flex-wrap: wrap;
-    margin-bottom: 1rem;
-  }
-
-  .downloads .dl-btn {
-    flex: 1 1 0;
-    min-width: 0;
-  }
-
-  .dl-btn {
-    display: inline-block;
-    padding: 0.6rem 0.8rem;
-    border-radius: 6px;
-    text-decoration: none;
-    font-weight: 600;
-    font-size: 0.95rem;
-    text-align: center;
-    transition: background 0.15s, transform 0.1s;
-    border: 1px solid #444;
-    background: #1e1e1e;
-    color: #e8e8e8;
-  }
-
-  .dl-btn:hover {
-    background: #2a2a2a;
-    transform: translateY(-1px);
-    border-color: #666;
-  }
-
-  .dl-btn.primary {
-    background: #2233cc;
-    border-color: #2233cc;
-    color: #fff;
-  }
-
-  .dl-btn.primary:hover {
-    background: #3344dd;
-    border-color: #3344dd;
-  }
-
-  .dl-btn small {
-    font-size: 0.7rem;
-    font-weight: 400;
-    color: #999;
-    line-height: 1.4;
-  }
-
-  .dl-btn img {
-    width: 18px;
-    height: 18px;
-    flex-shrink: 0;
   }
 
   .features {
@@ -310,119 +176,47 @@
 
   .story a:hover { color: #99aaff; }
 
-  .changelog {
-    max-width: 940px;
-    width: 100%;
-    margin: 0 auto 2.5rem;
-    column-count: 2;
-    column-gap: 2rem;
-  }
-
-  .changelog h2 {
-    column-span: all;
-    font-family: 'transducer-extended', sans-serif; font-weight: 900; text-transform: uppercase;
-    font-style: italic;
-    font-size: 1.1rem;
-    font-weight: 400;
-    color: #e8e8e8;
-    margin-bottom: 1.2rem;
-  }
-
-  .changelog details {
-    padding-left: 1rem;
-    margin-bottom: 0.8rem;
-    break-inside: avoid;
-  }
-
-  .changelog summary {
-    cursor: pointer;
-    font-weight: 500;
-    font-size: 0.95rem;
-    color: #ccc;
-    list-style: none;
-    padding: 0.3rem 0;
-  }
-
-  .changelog summary::-webkit-details-marker { display: none; }
-
-  .changelog summary::before {
-    content: '\25b8 ';
-    color: #555;
-    font-size: 0.8rem;
-  }
-
-  .changelog details[open] > summary::before {
-    content: '\25be ';
-    color: #e8e8e8;
-  }
-
-  .changelog summary .ver {
-    color: #e8e8e8;
-    font-family: 'transducer-extended', sans-serif; font-weight: 900; text-transform: uppercase;
-    font-style: italic;
-    font-size: 0.85rem;
-    display: inline-block;
-    width: 3.5rem;
-    flex-shrink: 0;
-  }
-
-  .changelog ul {
-    margin: 0.4rem 0 0.2rem 1rem;
-    padding: 0;
-    list-style: disc;
-  }
-
-  .changelog li {
-    font-size: 0.85rem;
-    color: #999;
-    line-height: 1.6;
-  }
-
-  footer {
-    text-align: center;
-    padding: 2rem 1.5rem;
-    border-top: 1px solid #222;
-    width: 100%;
-    max-width: 960px;
-    margin-top: auto;
-  }
-
-  footer a {
-    color: #777;
-    text-decoration: none;
-    font-size: 0.85rem;
-  }
-
-  footer a:hover { color: #ccc; }
-
   @media (max-width: 960px) {
-    main { padding: 1.5rem 1rem; }
     .hero-row { padding: 0 1rem; }
     .story-2col { column-count: 1; }
   }
 
   @media (max-width: 600px) {
-    h1 { font-size: 1.6rem; }
-    main { padding: 1rem 0.75rem; }
     .hero-row { flex-direction: column; align-items: center; padding: 0 0.75rem; }
-    .downloads { flex-wrap: wrap; justify-content: center; }
-    .dl-btn { flex: 1 1 40%; min-width: 120px; max-width: 48%; }
     .edition-banner { width: 100%; max-width: 220px; }
     .edition-img-wrap { width: 100%; height: 200px; }
     .features span { font-size: 0.6rem; padding: 0.2rem 0.5rem; }
     .story-row { flex-direction: column; }
-    .changelog { padding: 0; column-count: 1; }
   }
 </style>
 </head>
+<script data-goatcounter="https://kr106.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 <body>
+<section style="text-align:center; padding: 1.5rem 0 0;">
+  <img src="logo.png" alt="ULTRAMASTER KR-106" style="display:block; margin:0 auto 1rem; max-width:940px;">
+  <div id="splash" style="position: relative; cursor: pointer; margin: 0 auto;" onclick="startAudio()">
+    <img src="screenshot.png" alt="Ultramaster KR-106 synthesizer interface" style="display:block; width:100%;">
+    <div id="splash-overlay" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;">
+      <span style="font-family: 'Segment14', monospace; font-size: 1.4rem; color: #00ff00; letter-spacing: 0.08em; padding: 0.6rem 1.4rem; border: 1px solid #00ff00; background: #000; transition: background 0.15s;"
+            onmouseover="this.style.background='#003c00'" onmouseout="this.style.background='#000'">CLICK HERE TO PLAY IN BROWSER</span>
+    </div>
+  </div>
+  <script>
+    if (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      var splash = document.getElementById('splash');
+      splash.removeAttribute('onclick');
+      splash.style.cursor = 'default';
+      var overlay = document.getElementById('splash-overlay');
+      overlay.innerHTML = '<span style="font-family: \'Segment14\', monospace; font-size: 1rem; color: #00ff00; letter-spacing: 0.08em; padding: 0.6rem 1.4rem; border: 1px solid #006400; background: #000;">DESKTOP BROWSER REQUIRED FOR WEB DEMO</span>';
+    }
+  </script>
+  <div id="synth-wrap" style="display: none; margin: 0 auto; position: relative;">
+    <canvas id="c" width="1880" height="448" style="display:block; width:100%; height:auto; aspect-ratio:940/224;"></canvas>
+    <div id="tooltip" style="display:none; position:absolute; pointer-events:none; background:#000; color:#fff; font:11px sans-serif; padding:2px 5px; border:1px solid #888; white-space:nowrap; z-index:10;"></div>
+  </div>
+  <p style="text-align:center; font-size:0.65rem; color:#666; margin-top:0.3rem;">Web audio may have minor artifacts not present in the plugin/standalone.</p>
+</section>
 <main>
-  <header>
-    <img class="screenshot" src="logo.png" alt="ULTRAMASTER KR-106" style="display:block; margin:0 auto;">
-  </header>
-
-  <img class="screenshot" src="screenshot.png" alt="Ultramaster KR-106 synthesizer interface">
-
   <p class="description">
     A virtual analog synthesizer inspired by the classic Roland Juno polysynths. By analyzing hardware measurements, firmware, and factory schematics, we are constantly pushing closer to circuit-accurate perfection. It's an ongoing journey, but we won't stop believin' that because it's free and open-source, we can get there together.
     </p>
@@ -464,8 +258,14 @@
     <span>CLAP</span>
     <span>LV2</span>
     <span>Standalone</span>
+    <span>WebAudio</span>
   </div>
   <p class="release-info" id="release-info">Latest release: loading…</p>
+  <div class="downloads">
+    <a class="dl-btn" href="https://github.com/kayrockscreenprinting/ultramaster_kr106/issues" style="background:#1a1a2e;">
+      Bug Report / Feature Request
+    </a>
+  </div>
   <script>
     fetch('https://api.github.com/repos/kayrockscreenprinting/ultramaster_kr106/releases/latest')
       .then(r => r.json())
@@ -499,7 +299,7 @@
   </div><!-- .hero-left -->
   <a class="edition-banner" id="edition-banner" href="#" target="_blank" rel="noopener">
     <div class="edition-img-wrap">
-      <img id="edition-img-a" src="" alt="">
+      <img id="edition-img-a" src="edition_images/karl-larocca-go-cycling-every-day_comp.png" alt="Karl LaRocca: Go Cycling Every Day">
       <img id="edition-img-b" src="" alt="" style="opacity:0;">
     </div>
     <div class="edition-title" id="edition-title"></div>
@@ -553,6 +353,81 @@
     <h2>Changelog</h2>
 
     <details open>
+      <summary><span class="ver">2.5.1</span> Chorus hardware recalibration, BBD saturation, arp fixes</summary>
+      <ul>
+        <li>Chorus LFO rates, delay depth, and dry/wet gains recalibrated from clean J6 hardware recordings</li>
+        <li>BBD saturation model matched to hardware 6-voice unison levels</li>
+        <li>Arp-off no longer retriggers held notes; mode change continues sequence</li>
+      </ul>
+    </details>
+
+    <details open>
+      <summary><span class="ver">2.5.0</span> Oscillator sinc interpolation, VCF calibration, analog noise model</summary>
+      <ul>
+        <li>Saw oscillator: 16-tap windowed sinc interpolator, wavetable selection off-by-one fix</li>
+        <li>VCF frequency-dependent InputComp calibrated from 10x10 hardware noise sweep</li>
+        <li>VCF high-frequency resonance damping and output scaling from hardware measurements</li>
+        <li>Analog noise model: broadband, mains ripple, BBD clock bleed with independent controls</li>
+        <li>Preset search: type to filter, arrow keys skip non-matches</li>
+        <li>Scope FFT smoothing, master volume after chorus</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.4.12</span> VCF/DCO recalibration, MIDI learn for all controls</summary>
+      <ul>
+        <li>VCF and DCO levels recalibrated from hardware; MIDI learn for switches/buttons</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.4.11</span> LV2 host sync fix, true BBD chorus</summary>
+      <ul>
+        <li>Fix LV2 host sync; true BBD shift register chorus; optimized VCF</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.4.10</span> Optimized VCF, WASM improvements</summary>
+      <ul>
+        <li>Optimized VCF, LFO rate fix, WASM AudioWorklet with fallback</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.4.9</span> Hardware-measured VCA, Poly I allocator, portamento</summary>
+      <ul>
+        <li>VCA curve from hardware, Poly I voice allocator, 300% scale, drag-resize</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.4.8</span> Host drag-resize, AU scale fix</summary>
+      <ul>
+        <li>Host drag-resize, AU scale handling, 300% option</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.4.7</span> Arp/LFO quantize, UI scaling fix</summary>
+      <ul>
+        <li>Separate arp/LFO quantize params, UI scaling fix, Init preset improvements</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.4.6.3</span> LV2/CLAP UI scale fix, preset name cleanup, bass boost DC fix</summary>
+      <ul>
+        <li>Fix UI scale not applying on LV2 and CLAP hosts (defer setTransform to after host parenting)</li>
+        <li>Trim long factory preset names to reduce truncation in preset display</li>
+        <li>Increase preset popup grid display from 14 to 16 characters</li>
+        <li>Fix bass boost mode bypassing the DC blocking filter</li>
+        <li>Remove legacy polyBLEP oscillator code (replaced by wavetable DCO)</li>
+        <li>Browser-playable WASM synthesizer on the website</li>
+      </ul>
+    </details>
+
+    <details>
       <summary><span class="ver">2.4.6.2</span> Per-model HPF, bass boost biquad, VCF frequency compensation, LFO delay fix</summary>
       <ul>
         <li>HPF: per-model frequencies from circuit analysis and ngspice simulation (J6/J60/J106)</li>
@@ -599,442 +474,46 @@
       </ul>
     </details>
 
-    <details>
-      <summary><span class="ver">2.4.5</span> Juno-60 mode, hardware-calibrated DSP, UI improvements</summary>
-      <ul>
-        <li>Juno-60 preset bank: 128 factory patches from the original manual, dual 60/106 banks with mode switch</li>
-        <li>60 mode uses authentic J6 VCF frequency curve and C1 keyboard tracking by default</li>
-        <li>DCO LFO depth calibrated from Juno-6 hardware (strobe tuner, 11-point A-taper pot curve)</li>
-        <li>VCA: BA662 exponential gain model from schematic (Q17 transistor converter)</li>
-        <li>VCA Level: +/-10 dB range confirmed from hardware recording</li>
-        <li>Scope: dynamic ADSR zoom with continuous A-D-S-R curve, 1.5px smooth path strokes</li>
-        <li>Icon buttons with hover glow, preset sheet close button and ESC dismiss</li>
-        <li>Menu crash fix: deferred callbacks for patch manager actions</li>
-        <li>README.md in release zips, replaces per-platform INSTALL.txt</li>
-        <li>User guide: 60/106 mode docs, merged MIDI mapping, full QWERTY table</li>
-      </ul>
-    </details>
-
-    <details>
-      <summary><span class="ver">2.4.4</span> DAW sync, VCA/VCF corrections, UI improvements</summary>
-      <ul>
-        <li>Arpeggiator DAW sync: locks to host tempo with 9 note divisions (4 Beats to 32nd Note), beat-grid aligned stepping</li>
-        <li>LFO DAW sync: 13 divisions (24 Beats to 64th Note), phase resets on transport start</li>
-        <li>Both sync modes free-run at tempo-matched rate when transport is stopped</li>
-        <li>VCA Level: dB-linear gain law with correct +-10.6 dB range (PC1252H2 circuit analysis)</li>
-        <li>VCF output gain corrected from hardware recordings (self-oscillation matches saw level)</li>
-        <li>Sliders draw their own tick marks (removed from background image), wider hit area</li>
-        <li>Settings menu: two-column layout, radio groups update in-place, toggles stay open for multiple changes</li>
-        <li>Scope: patch bank mode with square cells and nav buttons, dimmer grid lines across all modes</li>
-        <li>VCF scope: frequency response includes output gain, dimmer cutoff marker</li>
-        <li>SysEx send/receive for all parameters, save patch dialog with bank/group/patch selection</li>
-        <li>Standard QWERTY piano layout, keyboard shortcut viewer</li>
-      </ul>
-    </details>
-
-    <details>
-      <summary><span class="ver">2.4.3</span> VCF recalibration from hardware measurements</summary>
-      <ul>
-        <li>Improved self-oscillation: cleaner sine wave, more accurate pitch tracking, consistent volume across the frequency range</li>
-        <li>Self-oscillation and passthrough signal levels now matched</li>
-        <li>Resonance amplitude consistent between R=0.9 and R=1.0 (matches hardware)</li>
-        <li>Noise source shared across all voices (matches hardware single 2SC945 generator), with schematic-derived filtering</li>
-        <li>Fixed click when switching VCA gate/env mode mid-note</li>
-        <li>Fixed click on first note after voice initialization</li>
-        <li>Waveform scope: peak amplitude readout with clip indicator</li>
-        <li>Spectrum analyzer: higher resolution rendering</li>
-        <li>Fixed scope freezing on rapid note retrigger and low notes</li>
-        <li>MIDI program change messages now processed before notes</li>
-        <li>Debug logging auto-disabled in release builds</li>
-      </ul>
-    </details>
-
-    <details>
-      <summary><span class="ver">2.4.2</span> Wavetable DCO, UI improvements</summary>
-      <ul>
-        <li>Replaced polyBLEP oscillators with bandlimited wavetable DCO, eliminates aliasing at all pitches</li>
-        <li>Oscillator runs at base sample rate; VCF handles its own oversampling internally</li>
-        <li>Remove output saturator for cleaner signal path (clip LED at &plusmn;1.0)</li>
-        <li>Master volume: squared audio taper for better low-end control, CC7 mapped</li>
-        <li>Double-click text editing on knobs (was sliders only)</li>
-        <li>Spectrum analyzer: 4096-point FFT for better low-frequency resolution</li>
-        <li>VCF frequency response scope: stop drawing line along bottom of display</li>
-      </ul>
-    </details>
-
-    <details>
-      <summary><span class="ver">2.4.1</span> Oversampling fixes, performance</summary>
-      <ul>
-        <li>Fix sub oscillator PolyBLEP sign (use absolute value for symmetric correction)</li>
-        <li>Fix oscillator noise LP running at wrong rate when oversampled (pass oversampled rate to Init)</li>
-        <li>Fix VCF thermal noise envelope decay being oversampling-dependent (compute coefficient from sample rate)</li>
-        <li>Fix waveform switch ramp halving in duration at higher oversampling (derive from time constant)</li>
-        <li>Hoist audio taper exp() curves from per-sample to per-block in oscillator mixer</li>
-        <li>Replace powf() with expf(logf()) in VCF resonance rolloff inner loop</li>
-      </ul>
-    </details>
-
-    <details>
-      <summary><span class="ver">2.4.0</span> DCO antialiasing</summary>
-      <ul>
-        <li>4th-order PolyBLEP (4-sample window) replaces 2nd-order for ~40 dB better alias suppression</li>
-        <li>Oscillator runs inside VCF oversampling loop (2x/4x) for combined osc+filter antialiasing</li>
-        <li>Fix missing PolyBLEP on sub oscillator (only half the transitions were corrected)</li>
-        <li>Fix saw PolyBLEP sign (was adding instead of subtracting)</li>
-        <li>Remove saw reset blip (384 kHz ring data was likely a resampler artifact)</li>
-        <li>Fix HPF slider drifting on standalone relaunch (mode remap firing on state restore)</li>
-        <li>Fix window scale not persisting on Linux X11</li>
-      </ul>
-    </details>
-
-    <details>
-      <summary><span class="ver">2.3.2</span> Bug fixes, arm64 glibc compatibility</summary>
-      <ul>
-        <li>Fix dropped MIDI notes when CC messages flood processBlock (Ableton + external controllers)</li>
-        <li>Fix J106 attack click at slider position 0 (let DAC RC filter smooth the onset)</li>
-        <li>Add All Notes Off (CC 120/123) to prevent stuck notes on controller disconnect</li>
-        <li>Re-enable DC blocking in J106 HPF modes 0 and 1</li>
-        <li>Build arm64 Linux in Debian Bullseye container (glibc 2.31) for Zynthian/Pi compatibility</li>
-        <li>Component variance section in user's guide</li>
-      </ul>
-    </details>
-
-    <details>
-      <summary><span class="ver">2.3.1</span> MIDI learn, 1982 HPF, DSP calibration</summary>
-      <ul>
-        <li>MIDI learn: right-click any slider or knob to assign a CC, persisted to JSON</li>
-        <li>Multiple parameters can share a CC (e.g. Decay + Release on one knob)</li>
-        <li>Tooltip shows CC assignment; Shift+drag fine, Cmd+drag superfine</li>
-        <li>Patch bank scope mode (P key): 16&times;8 grid with drag-to-launch bouncing ball</li>
-        <li>Component variance editor with Robot/Human/Out of Tune presets</li>
-        <li>1982 continuous HPF (39&ndash;1394 Hz from 11 hardware measurements)</li>
-        <li>1982 VCF frequency recalibrated to 248 Hz at slider 5.5 (service manual)</li>
-        <li>1982 LFO rate circuit model (TA75558S integrator + Schmitt trigger)</li>
-        <li>IR3109 expo converter tanh saturation on 1982 VCF (40 kHz ceiling)</li>
-        <li>Classic VCF Frq Scale setting for authentic 1982 frequency curve</li>
-        <li>Mono retrigger setting, bender/ADSR mode as live performance params</li>
-        <li>Frequency-matched VCF and HPF slider remapping on 1982/1984 switch</li>
-        <li>Custom macOS .icns icon for standalone app</li>
-      </ul>
-    </details>
-
-    <details>
-      <summary><span class="ver">2.3.0</span> Major VCF overhaul</summary>
-      <ul>
-        <li>4x oversampling (cascaded 2x polyphase stages) for clean self-oscillation up to 20 kHz</li>
-        <li>Runtime-selectable 2x/4x oversampling via settings menu</li>
-        <li>Empirical frequency compensation applied post-warp, sample-rate independent</li>
-        <li>Describing function tuned for &plusmn;20 cent self-oscillation pitch tracking</li>
-        <li>Filters run continuously (no reset on note-on, matches real hardware)</li>
-        <li>Per-voice VCF cutoff variance re-enabled (&plusmn;5%)</li>
-        <li>Standalone app icon</li>
-        <li>New: tools/vcf-analyze standalone filter analysis tool</li>
-      </ul>
-    </details>
-
-    <details>
-      <summary><span class="ver">2.2.3</span> Spectrum analyzer, UI improvements, Chorus fix</summary>
-      <ul>
-        <li>Spectrum analyzer scope mode (1024-point FFT, log frequency scale)</li>
-        <li>Custom LED popup menus for settings and patch manager (replaces system menus)</li>
-        <li>Patch selector grid showing all 128 presets in 8x16 layout</li>
-        <li>Settings and patch manager icon buttons (Tabler SVG icons)</li>
-        <li>Fix Chorus I not engaging when kChorusOff param was stale from preset</li>
-        <li>Fix SysEx echo loop toggling chorus state</li>
-        <li>User's guide page</li>
-      </ul>
-    </details>
-
-    <details>
-      <summary><span class="ver">2.2.2</span> ARM64 build, CDN icons, CLAP/LV2 in releases</summary>
-      <ul>
-        <li>Linux ARM64 (Raspberry Pi) build in CI and release workflows</li>
-        <li>CLAP and LV2 formats added to all platform release packages</li>
-        <li>Download button icons from cdn.simpleicons.org</li>
-        <li>Fix LV2 codesign on macOS (sign dylib inside bundle)</li>
-      </ul>
-    </details>
-
-    <details>
-      <summary><span class="ver">2.2.1</span> CSV preset bank, MIDI fixes, Default patch</summary>
-      <ul>
-        <li>Editable CSV patch bank with copy/paste, load/save, and bank file persistence</li>
-        <li>Global settings persistence (zoom, voice count, velocity, arp limit)</li>
-        <li>Fix double-triggered notes from UI keyboard MIDI echo loop</li>
-        <li>Fix stuck notes on hold release (release all voices matching a note)</li>
-        <li>Clean voice allocation on DAW suspend/resume</li>
-        <li>Show "Default" on fresh spawn; scroll to enter patch bank</li>
-        <li>SysEx output on preset change and individual knob tweaks</li>
-        <li>Slider fine control and text editor with bracket notation</li>
-      </ul>
-    </details>
-
-    <details>
-      <summary><span class="ver">2.2.0</span>Clock-domain BBD chorus, Configurable number of voices</summary>
-      <ul>
-        <li>Clock-domain VCO modulation for BBD chorus (replaces linear delay)</li>
-        <li>4-pole cascaded TPT pre/post filters from Juno-6 schematic RC values</li>
-        <li>Configurable 6/8/10 voices via right-click menu, persisted per instance</li>
-        <li>Fix stuck voices when switching unison to poly</li>
-      </ul>
-    </details>
-
-    <details>
-      <summary><span class="ver">2.1.9</span> CLAP and LV2 support</summary>
-      <ul>
-        <li>Add CLAP and LV2 plugin format support</li>
-        <li>Deprecation fixes for newer toolchains</li>
-      </ul>
-    </details>
-
-    <details>
-      <summary><span class="ver">2.1.8</span> MIDI CC/SysEx receive, master volume</summary>
-      <ul>
-        <li>Receive standard MIDI CC and Roland Juno SysEx for all parameters</li>
-        <li>Master volume control placed pre-chorus in signal chain</li>
-      </ul>
-    </details>
-
-    <details>
-      <summary><span class="ver">2.1.7</span>Added Preset Display</summary>
-      <ul>
-        <li>Preset name display with drag-to-scroll and mouse wheel</li>
-        <li>Arrow key and Page Up/Down preset navigation</li>
-        <li>Custom 14-segment LED font</li>
-      </ul>
-    </details>
-
-    <details>
-      <summary><span class="ver">2.1.6</span> Added UI Scaling</summary>
-      <ul>
-        <li>Mono mode: legato when keys overlap (no envelope retrigger)</li>
-        <li>VCF KBD tracking follows portamento glide instead of snapping</li>
-        <li>DCO LFO depth: model 10K wiper-to-ground shunt on 50K linear pot</li>
-        <li>UI scale preference saved/restored in project state</li>
-      </ul>
-    </details>
-
-    <details>
-      <summary><span class="ver">2.1.5</span> About screen, display scaling fix</summary>
-      <ul>
-        <li>About/version screen with vector stroke font in scope display</li>
-        <li>Fix 1x display scaling</li>
-      </ul>
-    </details>
-
-    <details>
-      <summary><span class="ver">2.1.4</span> Scope modes, output gain staging</summary>
-      <ul>
-        <li>3 scope modes: waveform, ADSR, VCF frequency response</li>
-        <li>VCF range extended to 5 Hz &ndash; 50 kHz</li>
-        <li>Output saturation and master volume gain staging improvements</li>
-      </ul>
-    </details>
-
-    <details>
-      <summary><span class="ver">2.1.3</span> VCF frequency compensation, J106 resonance model</summary>
-      <ul>
-        <li>kBaseFreq calibrated from ROM data (5.0 &rarr; 5.53)</li>
-        <li>J106 transistor resonance model (2SA1015-GR PNP)</li>
-        <li>FreqCompensation: corrects 4-pole cascade droop at low Q</li>
-        <li>VCF frequency response scope with analytical transfer function</li>
-        <li>Inverted pulse polarity in J106 mode (80017A positive-first)</li>
-        <li>ADSR: apply first tick immediately on NoteOn (D7811G firmware)</li>
-      </ul>
-    </details>
-
-    <details>
-      <summary><span class="ver">2.1.2</span> BBD charge-well saturation, modulated bandwidth</summary>
-      <ul>
-        <li>Three-stage filter chain matching MN3009 signal path</li>
-        <li>Clock-rate-dependent BBD bandwidth filter that sweeps with LFO</li>
-        <li>Charge-well soft saturation modeling 256 BBD stages</li>
-      </ul>
-    </details>
-
-    <details>
-      <summary><span class="ver">2.1.1</span> VCF self-oscillation tuning fix</summary>
-      <ul>
-        <li>Base compensation on k (actual feedback gain) instead of res&sup2;</li>
-        <li>Fix self-oscillation pitch nearly an octave flat at low cutoff</li>
-        <li>Calibrated against tuner measurements at 220/440/880/1760 Hz</li>
-      </ul>
-    </details>
-
-    <details>
-      <summary><span class="ver">2.0.0</span> Initial JUCE release</summary>
-      <ul>
-        <li>Port from iPlug2 to JUCE framework</li>
-        <li>macOS, Windows, and Linux support</li>
-        <li>VST3, AU, and standalone formats</li>
-        <li>CI/CD with GitHub Actions</li>
-      </ul>
-    </details>
+    <p style="text-align: center; margin-top: 1rem;"><a href="changelog.html" style="color: #7788cc;">Full changelog &rarr;</a></p>
   </div>
 </main>
 <script>
-// === Kayrock Editions rotating banner ===
+// === Kayrock Editions rotating banner (server-side random) ===
 (function() {
-  const editions = [
-    {title: "Kirsten Deirup: Bystander", url: "https://shop.kayrock.org/products/kirsten-deirup-bystander", image: "kirsten-deirup-bystander_comp.png"},
-    {title: "Bridget Caramagna: Panoply", url: "https://shop.kayrock.org/products/bridget-caramagna-panoply", image: "bridget-caramagna-panoply_comp.png"},
-    {title: "Trudy Benson: Doom Bloom", url: "https://shop.kayrock.org/products/trudy-benson-doom-bloom", image: "trudy-benson-doom-bloom_comp.png"},
-    {title: "Liz Collins: Zagreb Mountains", url: "https://shop.kayrock.org/products/liz-collins", image: "liz-collins-zagreb-mountains_comp.png"},
-    {title: "Ruby Sky Stiler: Catsitter", url: "https://shop.kayrock.org/products/ruby-sky-stiler-catsitter", image: "ruby-sky-stiler-catsitter_comp.png"},
-    {title: "Lauren De La Roche", url: "https://shop.kayrock.org/products/lauren-de-la-roche", image: "lauren-de-la-roche_comp.png"},
-    {title: "Erika Shiba: Here There", url: "https://shop.kayrock.org/products/erika-shiba", image: "erika-shiba-here-there_comp.png"},
-    {title: "Alexandra Zsigmond: Conscious/Subconscious", url: "https://shop.kayrock.org/products/alexandra-zsigmond", image: "alexandra-zsigmond-conscioussubconscious_comp.png"},
-    {title: "Antonio Carrau", url: "https://shop.kayrock.org/products/antonio-carrau", image: "antonio-carrau_comp.png"},
-    {title: "James Turek: The Heliopolis", url: "https://shop.kayrock.org/products/james-turek-the-heliopolis", image: "james-turek-the-heliopolis_comp.png"},
-    {title: "Tricia Keightley: Multiple.20", url: "https://shop.kayrock.org/products/tricia-keightley-multiple-20", image: "tricia-keightley-multiple20_comp.png"},
-    {title: "Peter Burr: Dirtscraper Elevation Chapter 24", url: "https://shop.kayrock.org/products/peter-burr", image: "peter-burr-dirtscraper-elevation-chapter-24_comp.png"},
-    {title: "Zoe Pettijohn Schade: Conflict Arrows 3", url: "https://shop.kayrock.org/products/zoe-pettijohn-schade-conflict-arrows-3", image: "zoe-pettijohn-schade-conflict-arrows-3_comp.png"},
-    {title: "Melissa Oresky: Fern Portal", url: "https://shop.kayrock.org/products/melissa-oresky", image: "melissa-oresky-fern-portal_comp.png"},
-    {title: "Paul Brainard: 7/9/1989 Sonic Temple Pittsburgh Pa", url: "https://shop.kayrock.org/products/paul-brainard", image: "paul-brainard-791989-sonic-temple-pittsburgh-pa_comp.png"},
-    {title: "Reed Anderson: H-Flag (Green)", url: "https://shop.kayrock.org/products/reed-anderson", image: "reed-anderson-h-flag-green_comp.png"},
-    {title: "Carolyn Salas: Caryatid", url: "https://shop.kayrock.org/products/carolyn-salas", image: "carolyn-salas-caryatid_comp.png"},
-    {title: "Madeline Donahue: Angel Hair", url: "https://shop.kayrock.org/products/madeline-donahue-angel-hair", image: "madeline-donahue-angel-hair_comp.png"},
-    {title: "Ati Maier: Spacerider 2020", url: "https://shop.kayrock.org/products/ati-maier-spacerider-2020", image: "ati-maier-spacerider-2020_comp.png"},
-    {title: "Timothy Hull: The Survival of Antiquity", url: "https://shop.kayrock.org/products/timothy-hull-the-survival-of-antiquity", image: "timothy-hull-the-survival-of-antiquity_comp.png"},
-    {title: "Robert Otto Epstein: So a touchdown counts as 7 points except when you decide to score a second touchdown for 2 extra points which makes it 8?", url: "https://shop.kayrock.org/products/robert-otto-epstein-so-a-touchdown-counts-as-7-points-except-when-you-decide-to-score-a-second-touchdown-for-2-extra-points-which-makes-it-8", image: "robert-otto-epstein-so-a-touchdown-counts-as-7-points-except-when-you-decide-to-score-a-second-touchdown-for-2-extra-points-which-makes-it-8_comp.png"},
-    {title: "Veronica Graham: Monument Park", url: "https://shop.kayrock.org/products/veronica-graham-monument-park", image: "veronica-graham-monument-park_comp.png"},
-    {title: "Erik den Breejen: When I Cannot Sing My Heart, I Can Only Speak My Mind", url: "https://shop.kayrock.org/products/erik-den-breejen-julia", image: "erik-den-breejen-when-i-cannot-sing-my-heart-i-can-only-speak-my-mind_comp.png"},
-    {title: "Butt Johnson: Flying Ducks", url: "https://shop.kayrock.org/products/butt-johnson-flying-ducks", image: "butt-johnson-flying-ducks_comp.png"},
-    {title: "Yuri Shimojo: A Message from Rudy", url: "https://shop.kayrock.org/products/yuri-shimojo-a-message-from-rudy", image: "yuri-shimojo-a-message-from-rudy_comp.png"},
-    {title: "Maria Calandra: EP's Studio", url: "https://shop.kayrock.org/products/maria-calandra-eps-studio", image: "maria-calandra-eps-studio_comp.png"},
-    {title: "Paul Shortt: Don't Let Adulthood Corrupt You II", url: "https://shop.kayrock.org/products/paul-shortt-dont-let-adulthood-corrupt-you-ii", image: "paul-shortt-dont-let-adulthood-corrupt-you-ii_comp.png"},
-    {title: "Michael Mykola Haleta: B-Side", url: "https://shop.kayrock.org/products/michael-mykola-haleta", image: "michael-mykola-haleta-b-side_comp.png"},
-    {title: "Eric Copeland: Glyph Figure", url: "https://shop.kayrock.org/products/eric-copeland-glyph-figure", image: "eric-copeland-glyph-figure_comp.png"},
-    {title: "Sarah Bedford: Balancing Act", url: "https://shop.kayrock.org/products/sarah-bedford-balancing-act", image: "sarah-bedford-balancing-act_comp.png"},
-    {title: "Jen Hitchings: Lone Wolf (Daddy)", url: "https://shop.kayrock.org/products/jen-hitchings-lone-wolf-daddy", image: "jen-hitchings-lone-wolf-daddy_comp.png"},
-    {title: "Karl LaRocca: Go Cycling Every Day", url: "https://shop.kayrock.org/products/karl-larocca-go-cycling-every-day-1", image: "karl-larocca-go-cycling-every-day_comp.png"},
-    {title: "Jamie Felton: Club Fantasy", url: "https://shop.kayrock.org/products/jamie-felton", image: "jamie-felton-club-fantasy_comp.png"},
-    {title: "Mike Par\u00e9: Bikers Bookshelf", url: "https://shop.kayrock.org/products/mike-pare", image: "mike-par\u00e9-bikers-bookshelf_comp.png"},
-    {title: "Sean Jackson: 5 Bicycles", url: "https://shop.kayrock.org/products/sean-jackson-5-bicycles", image: "sean-jackson-5-bicycles_comp.png"},
-    {title: "Heather Benjamin: Cowgirl of Irreversible Damages", url: "https://shop.kayrock.org/products/heather-benjamin-cowgirl", image: "heather-benjamin-cowgirl-of-irreversible-damages_comp.png"},
-    {title: "Meridith Pingree: Wave Pattern 6, 5, 4", url: "https://shop.kayrock.org/products/meridith-pingree-wave-pattern-6-5-4", image: "meridith-pingree-wave-pattern-6-5-4_comp.png"},
-    {title: "Summer Wheat: Beekeeper", url: "https://shop.kayrock.org/products/summer-wheat-beekeeper", image: "summer-wheat-beekeeper_comp.png"},
-    {title: "FOO/SKOU: Transatlantic Duet Print", url: "https://shop.kayrock.org/products/fooskou", image: "fooskou-transatlantic-duet-print_comp.png"},
-    {title: "Zoe Avery Nelson: Haptic Experiment No. 4", url: "https://shop.kayrock.org/products/zoe-avery-nelson-haptic-experiment-no-4", image: "zoe-avery-nelson-haptic-experiment-no-4_comp.png"},
-    {title: "Justin Amrhein: Endangered Species- Tiger Salamander Machine", url: "https://shop.kayrock.org/products/justin-amrhein-ambystoma-californiense", image: "justin-amrhein-endangered-species--tiger-salamander-machine_comp.png"},
-    {title: "Gabriela Jolowicz: Izzy", url: "https://shop.kayrock.org/products/gabriela-jolowicz-izzie", image: "gabriela-jolowicz-izzy_comp.png"},
-    {title: "Dan Shaw-Town: Arbeta", url: "https://shop.kayrock.org/products/dan-shaw-town-arbeta", image: "dan-shaw-town-arbeta_comp.png"},
-    {title: "Kristen Schiele: Night Vision", url: "https://shop.kayrock.org/products/kristen-schiele-night-vision", image: "kristen-schiele-night-vision_comp.png"},
-    {title: "Maja Djordjevic: ALL OF ME WANTS ALL OF YOU", url: "https://shop.kayrock.org/products/maja-djordjevic-all-of-me-wants-all-of-you", image: "maja-djordjevic-all-of-me-wants-all-of-you_comp.png"},
-    {title: "Maria Stabio: Brownout", url: "https://shop.kayrock.org/products/maria-stabio-brownout", image: "maria-stabio-brownout_comp.png"},
-    {title: "Christina Martinelli: September 1, 1939", url: "https://shop.kayrock.org/products/christina-martinelli-september-1-1939", image: "christina-martinelli-september-1-1939_comp.png"},
-    {title: "Liz Wendelbo: Ang\u00e9lique", url: "https://shop.kayrock.org/products/liz-wendelbo-angelique", image: "liz-wendelbo-ang\u00e9lique_comp.png"},
-    {title: "Anthony Palocci Jr.: Voice-Operated, Hands-Free 5-Channel Walkie-Talkie with Headset Mic", url: "https://shop.kayrock.org/products/anthony-palocci-jr-voice-operated-hands-free-5-channel-walkie-talkie-with-headset-mic", image: "anthony-palocci-jr-voice-operated-hands-free-5-channel-walkie-talkie-with-headset-mic_comp.png"},
-    {title: "Leslie Roberts: DIRECTIONS", url: "https://shop.kayrock.org/products/leslie-roberts-directions-1", image: "leslie-roberts-directions_comp.png"},
-    {title: "Claudia Pe\u00f1a: Double Chac Mool", url: "https://shop.kayrock.org/products/claudia-pena-double-chac-mool", image: "claudia-pe\u00f1a-double-chac-mool_comp.png"},
-    {title: "Benjamin Edmiston: Color Grid", url: "https://shop.kayrock.org/products/benjamin-edminston-untitled-color-grid", image: "benjamin-edmiston-color-grid_comp.png"},
-    {title: "Paolo Arao: Tried Angles (Violet)", url: "https://shop.kayrock.org/products/paolo-arao-tried-angles-violet", image: "paolo-arao-tried-angles-violet_comp.png"},
-    {title: "Kristin Texeira: Winslow Road", url: "https://shop.kayrock.org/products/kristin-texeria-winslow-road", image: "kristin-texeira-winslow-road_comp.png"},
-    {title: "Austin Eddy: The passage of time, A lake scene", url: "https://shop.kayrock.org/products/austin-eddy-the-passage-of-time-a-lake-scene", image: "austin-eddy-the-passage-of-time-a-lake-scene_comp.png"},
-    {title: "Lara Schnitger: A Dress Is Not A Yes", url: "https://shop.kayrock.org/products/lara-schnitger-a-dress-is-not-a-yes", image: "lara-schnitger-a-dress-is-not-a-yes_comp.png"},
-    {title: "Daniel van der Noon: NYC 2014-2018", url: "https://shop.kayrock.org/products/daniel-van-der-noon", image: "daniel-van-der-noon-nyc-2014-2018_comp.png"},
-    {title: "Chris Johanson: Beautiful Bird in Flight", url: "https://shop.kayrock.org/products/chris-johanson", image: "chris-johanson-beautiful-bird-in-flight_comp.png"},
-    {title: "Mary Wagner: Enigma", url: "https://shop.kayrock.org/products/mary-wagner-enigma", image: "mary-wagner-enigma_comp.png"},
-    {title: "Sierra Siemer: Neon Cumulus", url: "https://shop.kayrock.org/products/sierra-siemer-neon-cumulus", image: "sierra-siemer-neon-cumulus_comp.png"},
-    {title: "Palma Blank: Superposed", url: "https://shop.kayrock.org/products/palma-blank-superposed", image: "palma-blank-superposed_comp.png"},
-    {title: "Scott Albrecht: Together", url: "https://shop.kayrock.org/products/scott-albrecht-together", image: "scott-albrecht-together_comp.png"},
-    {title: "Anna Bugbee: Axis Mundi", url: "https://shop.kayrock.org/products/anna-bugbee-axis-mundi", image: "anna-bugbee-axis-mundi_comp.png"},
-    {title: "Kat Lyons: Winner", url: "https://shop.kayrock.org/products/kat-lyons-winner", image: "kat-lyons-winner_comp.png"},
-    {title: "Kati Lacker: Hula", url: "https://shop.kayrock.org/products/kati-lacker-hula", image: "kati-lacker-hula_comp.png"},
-    {title: "Flavio Trevisan: CMYK Up Down, Side to Side", url: "https://shop.kayrock.org/products/flavio-trevisan-cmyk-cmyk-up-down-side-to-side", image: "flavio-trevisan-cmyk-cmyk-up-down-side-to-side_comp.png"},
-    {title: "Jude Broughan: Radio Four", url: "https://shop.kayrock.org/products/jude-broughan-radio-four", image: "jude-broughan-radio-four_comp.png"},
-    {title: "Matt Bollinger: The King and Caralee", url: "https://shop.kayrock.org/products/matt-bollinger-the-king-and-caralee", image: "matt-bollinger-the-king-and-caralee_comp.png"},
-    {title: "Kristen Schiele: Hot Tickets", url: "https://shop.kayrock.org/products/kristen-schiele-hot-tickets", image: "kristen-schiele-hot-tickets_comp.png"},
-    {title: "Michelle Weinberg: Fun House Exit", url: "https://shop.kayrock.org/products/michelle-weinberg-fun-house-exit", image: "michelle-weinberg-fun-house-exit_comp.png"},
-    {title: "Naomi Clark: Pocket Jade and Goldstone", url: "https://shop.kayrock.org/products/naomi-clark-pocket-jade-and-goldstone", image: "naomi-clark-pocket-jade-and-goldstone_comp.png"},
-    {title: "Ruby Sky Stiler: Fran\u00e7oise Vase Painting", url: "https://shop.kayrock.org/products/ruby-sky-stiler-francoise-vase-painting", image: "ruby-sky-stiler-fran\u00e7oise-vase-painting_comp.png"},
-    {title: "Daniel Davidson: Mirror (Monster Burger)", url: "https://shop.kayrock.org/products/daniel-davidson-mirror-monster-burger", image: "daniel-davidson-mirror-monster-burger_comp.png"},
-    {title: "Mark Wagner: Greenery", url: "https://shop.kayrock.org/products/mark-wagner-greenery", image: "mark-wagner-greenery_comp.png"},
-    {title: "Scott Teplin: Sundrop Windflower", url: "https://shop.kayrock.org/products/scott-teplin-sundrop-windflower", image: "scott-teplin-sundrop-windflower_comp.png"},
-    {title: "Paul Shortt: Don't Let Adulthood Corrupt You", url: "https://shop.kayrock.org/products/paul-shortt-dont-let-adulthood-corrupt-you", image: "paul-shortt-dont-let-adulthood-corrupt-you_comp.png"},
-    {title: "Gaby D'Alessandro: Marine Explorer", url: "https://shop.kayrock.org/products/gaby-dalessandro-marine-explorer", image: "gaby-dalessandro-marine-explorer_comp.png"},
-    {title: "Eliza Stamps: 720 Hours", url: "https://shop.kayrock.org/products/eliza-stamps-720-hours", image: "eliza-stamps-720-hours_comp.png"},
-    {title: "Tim Lahan: Rise/Set", url: "https://shop.kayrock.org/products/tim-lahan-rise-set", image: "tim-lahan-riseset_comp.png"},
-    {title: "James Ulmer: Mr. Muscle", url: "https://shop.kayrock.org/products/james-ulmer-mr-muscle", image: "james-ulmer-mr-muscle_comp.png"},
-    {title: "Kristen Martincic: Left Corner Tile Pool", url: "https://shop.kayrock.org/products/kristen-martincic-left-corner-tile-pool", image: "kristen-martincic-left-corner-tile-pool_comp.png"},
-    {title: "Kristin Texeira: Piano Player at Wash Square", url: "https://shop.kayrock.org/products/kristin-texeira", image: "kristin-texeira-piano-player-at-wash-square_comp.png"},
-    {title: "Adam Hillman: Pencil Pusher", url: "https://shop.kayrock.org/products/adam-hillman-pencil-pusher", image: "adam-hillman-pencil-pusher_comp.png"},
-    {title: "Peter Granados: KISS", url: "https://shop.kayrock.org/products/peter-granados-kiss", image: "peter-granados-kiss_comp.png"},
-    {title: "JG Thirlwell: Domoscape #1", url: "https://shop.kayrock.org/products/jg-thirlwell-domoscape-1", image: "jg-thirlwell-domoscape-1_comp.png"},
-    {title: "Rasmus Bj\u00f8rn: Nature Is Calling", url: "https://shop.kayrock.org/products/rasmus-bjorn-nature-is-calling", image: "rasmus-bj\u00f8rn-nature-is-calling_comp.png"},
-    {title: "Karl LaRocca: 7 Segment Display", url: "https://shop.kayrock.org/products/karl-larocca-7-segment-display", image: "karl-larocca-7-segment-display_comp.png"},
-    {title: "Shannon Finnegan: 8 Hour Drawing", url: "https://shop.kayrock.org/products/shannon-finnegan-8-hour-drawing", image: "shannon-finnegan-8-hour-drawing_comp.png"},
-    {title: "Matthew Craven: STRIIPES", url: "https://shop.kayrock.org/products/matthew-craven-striipes", image: "matthew-craven-striipes_comp.png"},
-    {title: "Kate Humphreys: Flushing Tire Shop", url: "https://shop.kayrock.org/products/kate-humphreys-flushing-tire-shop", image: "kate-humphreys-flushing-tire-shop_comp.png"},
-    {title: "Robert Otto Epstein: Russell Westbrook", url: "https://shop.kayrock.org/products/robert-otto-epstein-russell-westbrook", image: "robert-otto-epstein-russell-westbrook_comp.png"},
-    {title: "John Broadley: Choose A Haircut", url: "https://shop.kayrock.org/products/john-broadley-choose-a-haircut", image: "john-broadley-choose-a-haircut_comp.png"},
-    {title: "Royal Jarmon: Thank You", url: "https://shop.kayrock.org/products/royal-jarmon-thank-you", image: "royal-jarmon-thank-you_comp.png"},
-    {title: "Corey Durbin: Link", url: "https://shop.kayrock.org/products/corey-durbin-link", image: "corey-durbin-link_comp.png"},
-    {title: "Matthew Korbel Bowers: Goodbye Mountain 1", url: "https://shop.kayrock.org/products/matthew-korbel-bowers-goodbye-mountain-1", image: "matthew-korbel-bowers-goodbye-mountain-1_comp.png"},
-    {title: "Wizard Skull: Sylvester Stallone", url: "https://shop.kayrock.org/products/wizard-skull-sylvester-stallone", image: "wizard-skull-sylvester-stallone_comp.png"},
-    {title: "Mike Simi: Sad Mac", url: "https://shop.kayrock.org/products/mike-simi-sad-mac", image: "mike-simi-sad-mac_comp.png"},
-    {title: "Conrad Guevara: Kalamansi", url: "https://shop.kayrock.org/products/conrad-guevara-kalamansi", image: "conrad-guevara-kalamansi_comp.png"},
-    {title: "Anna Haifisch: Chin Tiki", url: "https://shop.kayrock.org/products/anna-haifisch-chin-tiki", image: "anna-haifisch-chin-tiki_comp.png"},
-    {title: "Naomi Clark: Burger Buns", url: "https://shop.kayrock.org/products/naomi-clark-burger-buns", image: "naomi-clark-burger-buns_comp.png"},
-    {title: "Killer Acid: Death at Home", url: "https://shop.kayrock.org/products/killer-acid-death-at-home", image: "killer-acid-death-at-home_comp.png"},
-    {title: "Monica Wynn: Prophets and Profits", url: "https://shop.kayrock.org/products/monica-wynn-prophets-and-profits", image: "monica-wynn-prophets-and-profits_comp.png"},
-    {title: "Christopher Xydas: Celestial", url: "https://shop.kayrock.org/products/christopher-xydas-celestial", image: "christopher-xydas-celestial_comp.png"},
-    {title: "Janice Scull: Bathing with Serpent", url: "https://shop.kayrock.org/products/janice-scull-bathing-with-serpent", image: "janice-scull-bathing-with-serpent_comp.png"},
-    {title: "Stephen Faillace: Snakes of Sierra Nevada", url: "https://shop.kayrock.org/products/stephen-faillace-snakes-of-sierra-nevada", image: "stephen-faillace-snakes-of-sierra-nevada_comp.png"},
-    {title: "Eric Doeringer: Lines, Colors, and Their Combinations", url: "https://shop.kayrock.org/products/eric-doeringer-lines-colors-and-their-combinations", image: "eric-doeringer-lines-colors-and-their-combinations_comp.png"},
-    {title: "Aliza Morell: Rockrose", url: "https://shop.kayrock.org/products/aliza-morell-rockrose", image: "aliza-morell-rockrose_comp.png"},
-    {title: "Joel Strong: Straight Outta Pawnee", url: "https://shop.kayrock.org/products/joel-strong-straight-outta-pawnee", image: "joel-strong-straight-outta-pawnee_comp.png"},
-    {title: "Kristen Schiele: Double Blondies", url: "https://shop.kayrock.org/products/kristen-schiele-double-blondies", image: "kristen-schiele-double-blondies_comp.png"},
-    {title: "Sarah Niemiec: Wavy Vibes", url: "https://shop.kayrock.org/products/sarah-niemiec-wavy-vibes", image: "sarah-niemiec-wavy-vibes_comp.png"},
-    {title: "Justin Hager: Missy Elliott Smith", url: "https://shop.kayrock.org/products/justin-hager-missy-elliott-smith", image: "justin-hager-missy-elliott-smith_comp.png"},
-    {title: "Christian Joy: Galaxy Hand", url: "https://shop.kayrock.org/products/christian-joy-galaxy-hand", image: "christian-joy-galaxy-hand_comp.png"},
-    {title: "Sheryl Oppenheim: Hand Over Hand", url: "https://shop.kayrock.org/products/sheryl-oppenheim-hand-over-hand", image: "sheryl-oppenheim-hand-over-hand_comp.png"},
-    {title: "Kristine Reano: Chill", url: "https://shop.kayrock.org/products/kristine-reano-chill", image: "kristine-reano-chill_comp.png"},
-    {title: "Karl LaRocca: Go Running Every Day", url: "https://shop.kayrock.org/products/karl-larocca-go-running-every-day", image: "karl-larocca-go-running-every-day_comp.png"},
-    {title: "Karl LaRocca: Go Swimming Every Day", url: "https://shop.kayrock.org/products/karl-larocca-go-swimming-every-day", image: "karl-larocca-go-swimming-every-day_comp.png"},
-    {title: "Karl LaRocca: Go Cycling Every Day", url: "https://shop.kayrock.org/products/karl-larocca-go-cycling-every-day", image: "karl-larocca-go-cycling-every-day_comp.png"},
-    {title: "Esther Ruiz: Index", url: "https://shop.kayrock.org/products/esther-ruiz-index", image: "esther-ruiz-index_comp.png"},
-    {title: "Tres Roemer: Ravishing", url: "https://shop.kayrock.org/products/tres-roemer-ravishing", image: "tres-roemer-ravishing_comp.png"},
-    {title: "John Roemer: Mesh", url: "https://shop.kayrock.org/products/john-roemer-mesh", image: "john-roemer-mesh_comp.png"},
-    {title: "Jennifer Grimyser: Shhh...", url: "https://shop.kayrock.org/products/jennifer-grimyser-shhh", image: "jennifer-grimyser-shhh_comp.png"},
-    {title: "Ryan Brady: Imperfect Union", url: "https://shop.kayrock.org/products/ryan-brady-imperfect-union", image: "ryan-brady-imperfect-union_comp.png"},
-    {title: "Leslie Wamsley: Caught Up", url: "https://shop.kayrock.org/products/leslie-wamsley-caught-up", image: "leslie-wamsley-caught-up_comp.png"},
-    {title: "Justin Amrhein: Cicada Engine", url: "https://shop.kayrock.org/products/justin-amrhein", image: "justin-amrhein-cicada-engine_comp.png"},
-    {title: "Betty Hart: The Edge of Stillness", url: "https://shop.kayrock.org/products/betty-hart-the-edge-of-stillness", image: "betty-hart-the-edge-of-stillness_comp.png"},
-    {title: "Conrad Guevara: Untitled", url: "https://shop.kayrock.org/products/conrad-guevara-untitled", image: "conrad-guevara-untitled_comp.png"},
-    {title: "Kristen Martincic: Square Pool", url: "https://shop.kayrock.org/products/kristen-martincic-square-pool", image: "kristen-martincic-square-pool_comp.png"},
-    {title: "Matthew Craven: GRIDLOCKE (totem)", url: "https://shop.kayrock.org/products/matthew-craven-gridlocke-totem", image: "matthew-craven-gridlocke-totem_comp.png"},
-  ];
-
-  const imgA = document.getElementById('edition-img-a');
-  const imgB = document.getElementById('edition-img-b');
-  const titleEl = document.getElementById('edition-title');
-  const banner = document.getElementById('edition-banner');
-  let showingA = true;
-  let lastIdx = -1;
-
-  function pick() {
-    let idx;
-    do { idx = Math.floor(Math.random() * editions.length); } while (idx === lastIdx);
-    lastIdx = idx;
-    return editions[idx];
-  }
+  var imgA = document.getElementById('edition-img-a');
+  var imgB = document.getElementById('edition-img-b');
+  var titleEl = document.getElementById('edition-title');
+  var banner = document.getElementById('edition-banner');
+  var showingA = true;
 
   function show(ed) {
-    const next = showingA ? imgB : imgA;
-    const prev = showingA ? imgA : imgB;
-    next.src = 'edition_images/' + ed.image;
+    var next = showingA ? imgB : imgA;
+    var prev = showingA ? imgA : imgB;
     next.alt = ed.title;
-    next.style.opacity = '1';
-    prev.style.opacity = '0';
     titleEl.textContent = ed.title;
     banner.href = ed.url;
-    showingA = !showingA;
+    function reveal() {
+      next.style.opacity = '1';
+      prev.style.opacity = '0';
+      showingA = !showingA;
+    }
+    next.onload = reveal;
+    next.src = ed.image;
+    if (next.complete) reveal();
   }
 
-  show(pick());
-  setInterval(function() { show(pick()); }, 10000);
+  function load() {
+    fetch('https://kayrock.org/kr106/edition_random.php').then(function(r) { return r.json(); }).then(show).catch(function() {});
+  }
+
+  load();
+  setInterval(load, 30000);
 })();
 </script>
+<script src="dist/kr106-audio.js"></script>
+<script src="dist/kr106-params.js"></script>
+<script src="dist/kr106-controls.js"></script>
+<script src="dist/kr106-scope.js"></script>
+<script src="dist/kr106-ui.js"></script>
 </body>
 </html>
