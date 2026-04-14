@@ -555,6 +555,10 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 {
   juce::ScopedNoDenormals noDenormals;
 
+  int nFrames = buffer.getNumSamples();
+  int nOutputs = std::min(getTotalNumOutputChannels(), 2);
+  static int diagNoteOnCount = 0;
+
   static bool firstBlock = true;
   if (firstBlock) {
     dbgLog("processBlock FIRST CALL");
@@ -566,9 +570,6 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
           + " fadeIn=" + juce::String(mFadeInRemaining));
     firstBlock = false;
   }
-
-  int nFrames = buffer.getNumSamples();
-  int nOutputs = std::min(getTotalNumOutputChannels(), 2);
 
   // Clear extra channels
   for (int c = nOutputs; c < getTotalNumOutputChannels(); c++)
@@ -1030,7 +1031,6 @@ void KR106AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
   }
 
   // --- Diagnostic: log first NoteOn output ---
-  static int diagNoteOnCount = 0;
   if (diagNoteOnCount > 0 && diagNoteOnCount <= 3)
   {
     float peak = 0.f;
