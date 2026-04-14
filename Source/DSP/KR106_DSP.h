@@ -611,7 +611,7 @@ public:
   // 1-pole TPT lowpass for analog bandwidth modeling
   struct AnalogBW {
     float s = 0.f;
-    float g = 0.f; // tan(pi * fc / sr)
+    float g = 1.f; // tan(pi * fc / sr); default 1.0 = passthrough until init()
     void init(float fc, float sr) { g = tanf(3.14159265f * fc / sr); }
     float process(float x) {
       float v = (x - s) * g / (1.f + g);

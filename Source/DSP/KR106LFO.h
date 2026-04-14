@@ -333,7 +333,11 @@ struct LFO
     if (mPos >= 1.f)
       mPos -= 1.f;
 
-    if (newState && mAmp < 1.f && !mArmed)
+    // Advance whenever any voice is active — matches ROM $030D-$0323 where
+    // holdoff ($FF56) and ramp ($FF5A) accumulators advance every main loop
+    // tick regardless of gate state. mArmed only gates the reset on note-on
+    // after silence; it does not pause accumulation during release tails.
+    if (newState && mAmp < 1.f)
     {
       if (mModel != kJ106)
       {
