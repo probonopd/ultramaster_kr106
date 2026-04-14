@@ -2,7 +2,7 @@
 #include "BinaryData.h"
 #include "Controls/KR106QwertyDiagram.h"
 
-#define KR106_DEBUG_RESIZE 1
+#define KR106_DEBUG_RESIZE 0
 #if KR106_DEBUG_RESIZE
 #include "KR106PresetManager.h"
 static void dbgResize(const juce::String& msg)
