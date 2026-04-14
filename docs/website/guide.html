@@ -14,7 +14,7 @@
   body {
     font-family: 'transducer-condensed', 'Oswald', sans-serif;
     font-weight: 500;
-    background: #111 url('background.png') center top / cover no-repeat fixed;
+    background: #111 url('background_small.png') center top / cover no-repeat fixed;
     color: #e8e8e8;
     min-height: 100vh;
     display: flex;
@@ -234,7 +234,7 @@
     <div class="control-group">
       <h3>Power &amp; Tuning</h3>
         <p><strong>Power</strong> Turns the synth on and off. All voices are silenced when off.</p>
-        <p><strong>Tuning</strong> Fine-tune the master pitch up or down.</p>
+        <p><strong>Tuning</strong> Fine-tune the master pitch &plusmn;100 cents. The knob has a center detent at 0 cents (1 pixel = 1 cent). MIDI CC values 63 and 64 both map to exactly 0 cents.</p>
     </div>
 
     <div class="control-group">
@@ -350,13 +350,13 @@
     <img src="scope.png" alt="Scope display modes" class="screenshot" style="margin-top: 0.8rem; pointer-events: none; flex-basis: 100%;">
   </summary>
 
-  <p>The oscilloscope in the upper right. Click to cycle through six display modes. <kbd>&larr;</kbd> <kbd>&rarr;</kbd> arrow keys also cycle forward and backward.</p>
+  <p>The oscilloscope in the upper right. A nav bar at the bottom shows the current mode name and &lt; &gt; buttons to cycle between modes. <kbd>&larr;</kbd> <kbd>&rarr;</kbd> arrow keys also cycle forward and backward.</p>
   <ol start="0">
-    <li><strong>Waveform</strong> Triggered oscilloscope showing the raw audio output.</li>
-    <li><strong>Spectrum</strong> Frequency spectrum analyzer (logarithmic).</li>
-    <li><strong>ADSR</strong> Graphs the current envelope shape in real time.</li>
-    <li><strong>99% Invisible</strong> A 16x8 grid of all 128 presets. Click a cell to load a preset. Drag from a cell and release to launch a bouncing ball that changes presets as it travels. Click the &lt; &gt; buttons at the bottom to cycle scope modes.</li>
-    <li><strong>VCF</strong> Graphs the filter frequency response.</li>
+    <li><strong>Waveform</strong> Triggered oscilloscope showing the raw audio output. The nav bar shows peak level in dB. Drag up/right to increase master volume, down/left to decrease.</li>
+    <li><strong>Spectrograph</strong> Frequency spectrum analyzer (logarithmic). Also shows dB level. Drag to adjust master volume.</li>
+    <li><strong>Envelope</strong> Graphs the current ADSR envelope shape in real time. Drag the vertical boundary lines left/right to adjust Attack, Decay, and Release times. Drag the horizontal sustain segment up/down to adjust Sustain level. The cursor changes to a resize arrow when hovering over a draggable target.</li>
+    <li><strong>VCF</strong> Graphs the filter frequency response (normalized to 0 dB at DC). The nav bar shows the cutoff frequency. Click or drag to set VCF frequency (horizontal) and resonance (vertical) directly.</li>
+    <li><strong>Patch Bank</strong> A 16x8 grid of all 128 presets. Click a cell to load a preset. Drag from a cell and release to launch a bouncing ball that changes presets as it travels.</li>
     <li><strong>About</strong> Version and credits.</li>
   </ol>
   </details>
@@ -372,6 +372,7 @@
 
   <h3>Browsing</h3>
   <p><strong>Left-click</strong> the preset display to open the patch selector, a full grid showing all 128 presets. Click any patch to load it. You can also use the arrow keys or mouse wheel to step through presets.</p>
+  <p><strong>Type to search:</strong> With the preset grid open, start typing to filter presets by name. Non-matching presets dim. Arrow keys skip dimmed entries (left/right scans linearly, up/down stays in the same column). <kbd>Backspace</kbd> deletes characters. <kbd>Escape</kbd> clears the search (press again to close). <kbd>Enter</kbd> selects the highlighted preset and closes the grid.</p>
 
   <h3>Patch Manager</h3>
   <p>The database icon to the left of the preset display opens the patch manager menu:</p>
@@ -398,7 +399,7 @@
 
   <p>Click the gear icon or right-click anywhere on the panel background to access these options:</p>
   <ul>
-    <li><strong>100% / 150% / 200%</strong> Window scale. Your choice is saved between sessions.</li>
+    <li><strong>100% / 150% / 200% / 300%</strong> Window scale. Your choice is saved between sessions.</li>
     <li><strong>6 / 8 / 10 Voices</strong> Maximum polyphony. More voices use more CPU.</li>
     <li><strong>Ignore MIDI Velocity</strong> All notes play at full velocity, like the original hardware.</li>
     <li><strong>Limit Arp to Keyboard Range</strong> Arpeggio wraps notes back into the 61-key range instead of extending beyond it.</li>
@@ -407,8 +408,9 @@
     <li><strong>Mono Retrigger</strong> When on (default), every new note in mono mode retriggers the envelope. When off, legato notes glide without retriggering.</li>
     <li><strong>MIDI Out: SysEx</strong> Selects the MIDI output format. When off (default), the plugin sends standard MIDI CC for parameter changes and Program Change for preset selection. When on, it sends Roland Juno-106 SysEx (IPR for individual parameters, APR for preset dumps). The plugin always <em>receives</em> CC, SysEx, and Program Change regardless of this setting.</li>
 
-    <li><strong>VCF Oversample 2x / 4x</strong> Filter oversampling factor. 4x (default) gives clean self-oscillation tracking up to 20 kHz. 2x uses less CPU but may alias at high cutoff + high resonance.</li>
+    <li><strong>VCF Oversample Off / 2x / 4x</strong> Filter oversampling factor. 4x (default) gives clean self-oscillation tracking up to 20 kHz. 2x uses less CPU but may alias at high cutoff + high resonance. Off disables oversampling entirely (lowest CPU, may be unstable at high resonance).</li>
     <li><strong>Component Variance</strong> Opens the per-voice variance editor. See below.</li>
+    <li><strong>Keyboard Shortcuts</strong> Shows a diagram of the QWERTY keyboard layout for playing notes.</li>
   </ul>
   </details>
 
@@ -421,7 +423,16 @@
 
   <p>Real analog polysynths have slight differences between voices due to component tolerances. Each VCF, VCA, and ADSR circuit is built from discrete parts that are never perfectly matched. The variance editor lets you control these per-voice offsets to dial in exactly how much analog character you want.</p>
 
-  <h3>Parameters</h3>
+  <h3>Noise &amp; Drive Controls</h3>
+  <p>The top row provides global noise and saturation controls:</p>
+  <ul>
+    <li><strong>ANALOG</strong> Broadband analog noise floor level (0% = silent, 50% = unity, 100% = 4x).</li>
+    <li><strong>MAINS</strong> Mains hum (120/240/360 Hz harmonics) level.</li>
+    <li><strong>CLOCK</strong> BBD clock feedthrough noise level.</li>
+    <li><strong>BBD DRIVE</strong> Saturation drive on the chorus BBD input. Higher values add subtle compression on loud signals. 0% disables saturation entirely.</li>
+  </ul>
+
+  <h3>Per-Voice Parameters</h3>
   <ul>
     <li><strong>VCF FRQ</strong> Filter cutoff offset in cents (&plusmn;10 cts).</li>
     <li><strong>DCO FRQ</strong> Oscillator pitch offset in cents (&plusmn;30 cts).</li>
@@ -436,7 +447,7 @@
 
   <h3>Tune Presets</h3>
   <ul>
-    <li><strong>Robot Tune</strong> All components at spec. Every voice is identical. Clean and precise.</li>
+    <li><strong>Robot Tune</strong> All components at spec. Every voice is identical. Clean and precise. Also zeros all noise and BBD drive controls.</li>
     <li><strong>Human Tune</strong> Subtle randomized offsets (1/5 of full range). A well-maintained unit.</li>
     <li><strong>Out of Tune</strong> Full random variance. A synth that's been sitting in a garage for 40 years.</li>
   </ul>
@@ -452,8 +463,9 @@
   </summary>
 
   <h3>MIDI Learn</h3>
-  <p><strong>Right-click</strong> any slider to enter MIDI Learn mode. The tooltip shows "MIDI LEARN" and a green border appears around the control. Move any CC on your MIDI controller to assign it. The assignment is saved between sessions.</p>
+  <p><strong>Right-click</strong> any slider, knob, switch, or button to enter MIDI Learn mode. The tooltip shows "MIDI LEARN" and a green border appears around the control. Move any CC on your MIDI controller to assign it. The assignment is saved between sessions.</p>
   <p>Multiple parameters can share the same CC. For example, assign Decay and Release to the same knob to control both in sync.</p>
+  <p><kbd>Tab</kbd> advances MIDI Learn to the next control. <kbd>Shift+Tab</kbd> goes backward. <kbd>[</kbd> and <kbd>]</kbd> also navigate forward and backward. Left-click any control to cancel MIDI Learn mode.</p>
   <p>To reassign, right-click the slider again and send a new CC. Click anywhere else to cancel learn mode.</p>
 
   <h3>MIDI Mapping</h3>

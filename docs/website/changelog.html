@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="favicon.ico">
+<link rel="stylesheet" href="https://use.typekit.net/siv2osi.css">
+<title>Ultramaster KR-106 — Changelog</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  body { padding: 2rem 1rem; }
+  .changelog h2 a {
+    color: #7788cc;
+    font-family: 'transducer-condensed', 'Oswald', sans-serif;
+    font-size: 0.85rem;
+    font-style: normal;
+    text-transform: none;
+    margin-left: 1rem;
+  }
+  .changelog h2 a:hover { color: #99aaff; }
+</style>
+</head>
+<body>
+  <div class="changelog">
+    <h2>Changelog <a href="index.html">&larr; Back to KR-106</a></h2>
+
+    <details open>
+      <summary><span class="ver">2.5.5</span> VCF input gain calibration, CV smoothers, PWM fix, zoom persistence</summary>
+      <ul>
+        <li>VCF FreqGain: empirical bell curve in log-frequency space matches hardware passband level across all 128 factory presets</li>
+        <li>VCF resonance fade: k fades to zero between 20 kHz and Nyquist, prevents aliased ringing on high-cutoff patches</li>
+        <li>RC smoothers (1ms tau) on PWM, DCO pitch, and VCF resonance CVs, matching .01uF cap on all 16 DAC outputs</li>
+        <li>PWM uses raw LFO (pre-onset envelope), matching ROM firmware where PWM path bypasses LFO delay scalar</li>
+        <li>VCF hardware calibration: J106 resonance curve, 2D FreqComp lookup table from hardware noise sweep</li>
+        <li>Arp sync fix for hosts without PPQ (Zynthian LV2)</li>
+        <li>UI zoom persistence: settings.json is authoritative, setStateInformation no longer overwrites saved scale</li>
+        <li>Fix AU scale: set editor size before setResizable to prevent host clobbering saved zoom on reopen</li>
+        <li>Startup click fix: snap volume smoothers to targets in prepareToPlay</li>
+      </ul>
+    </details>
+
+    <details open>
+      <summary><span class="ver">2.5.4</span> LFO release fix, analog bandwidth filter, VCF slope compensation</summary>
+      <ul>
+        <li>LFO onset envelope preserved during release tail (matches D7811G firmware behavior)</li>
+        <li>Analog bandwidth filter: 1-pole at 38 kHz models aggregate HF rolloff from IR3109/BA662/mixing stage</li>
+        <li>VCF slope and mid-range frequency compensation from hardware noise sweep</li>
+        <li>Gate VCA smoothing: RC filter on gate envelope prevents clicks on fast gate transitions</li>
+      </ul>
+    </details>
+
+    <details open>
+      <summary><span class="ver">2.5.3</span> AU dead zone fix, scope LED font, tuning knob improvements</summary>
+      <ul>
+        <li>Fix AU dead zones by removing setAlwaysOnTop</li>
+        <li>Scope LED font for preset display</li>
+        <li>Menu highlight and arp range position fixes</li>
+        <li>Tuning knob: center snap, 1px/cent gearing, MIDI CC 63/64 both map to center</li>
+      </ul>
+    </details>
+
+    <details open>
+      <summary><span class="ver">2.5.2</span> Scope nav bar, interactive params, AU cursor fix</summary>
+      <ul>
+        <li>Scope nav bar with mode labels</li>
+        <li>Interactive VCF, ADSR, and master volume drag in scope display</li>
+        <li>AU cursor fix</li>
+      </ul>
+    </details>
+
+    <details open>
+      <summary><span class="ver">2.5.1</span> Chorus hardware recalibration, BBD saturation, arp fixes</summary>
+      <ul>
+        <li>Chorus LFO rates, delay depth, and dry/wet gains recalibrated from clean J6 hardware recordings</li>
+        <li>BBD saturation model: soft clipping on delay line input matched to hardware 6-voice unison levels</li>
+        <li>Arp-off no longer retriggers held notes (smooth transition to sustained chord)</li>
+        <li>Arp mode change (up/down/up-down) continues sequence instead of restarting</li>
+      </ul>
+    </details>
+
+    <details open>
+      <summary><span class="ver">2.5.0</span> Oscillator sinc interpolation, VCF calibration, analog noise model</summary>
+      <ul>
+        <li>Saw oscillator: 16-tap windowed sinc interpolator replaces Hermite, fixes harmonic rolloff above 1 kHz</li>
+        <li>Wavetable selection off-by-one fix: correct table now used at octave boundaries</li>
+        <li>VCF frequency-dependent InputComp: passband gain calibrated from 10x10 hardware noise sweep at 96 kHz</li>
+        <li>VCF high-frequency resonance damping: feedback drive increases with cutoff to match IR3109 OTA compression</li>
+        <li>VCF output scaling at high freq/res to match hardware self-oscillation amplitude</li>
+        <li>Analog noise model: separate broadband, mains ripple (120/240/360 Hz), and BBD clock bleed</li>
+        <li>Variance sheet: independent Analog Noise, Mains Noise, Clock Noise controls; Robot Tune zeros all three</li>
+        <li>Chorus major recalibration: true BBD shift register, matched pre/post filters</li>
+        <li>Master volume moved after chorus (noise injected in chorus now scales with volume)</li>
+        <li>Preset search: type to filter presets, arrow keys skip non-matching entries</li>
+        <li>Scope: FFT spectrum smoothing, Nyquist bin fix, flat line on idle, silence blanking</li>
+      </ul>
+    </details>
+
+    <details open>
+      <summary><span class="ver">2.4.12</span> VCF/DCO hardware recalibration, MIDI learn for all controls</summary>
+      <ul>
+        <li>VCF InputComp and output gain recalibrated from hardware recordings</li>
+        <li>DCO sub oscillator amplitude from hardware measurement (1.51x pulse)</li>
+        <li>New J106 sub level 11-point lookup table from osc_calibrate recording</li>
+        <li>MIDI learn for switches and buttons (right-click, tooltip, green border, CC display)</li>
+        <li>Shift+Tab fix for backward MIDI learn navigation</li>
+        <li>Left-click cancel no longer blocks drag start on knobs/sliders</li>
+      </ul>
+    </details>
+
+    <details open>
+      <summary><span class="ver">2.4.11</span> LV2 host sync fix, true BBD chorus</summary>
+      <ul>
+        <li>Fix LV2 host sync: extrapolate beat position when host skips atoms</li>
+        <li>True BBD shift register chorus model with matched pre/post filters</li>
+        <li>Add optimized VCF implementation (cached coefficients, no per-sample transcendentals)</li>
+      </ul>
+    </details>
+
+    <details open>
+      <summary><span class="ver">2.4.10</span> Optimized VCF, WASM improvements</summary>
+      <ul>
+        <li>Optimized VCF: cached coefficients avoid redundant transcendentals per sample</li>
+        <li>LFO rate fix, oversample improvements, UI tweaks</li>
+        <li>WASM: AudioWorklet with ScriptProcessor fallback</li>
+        <li>WASM: Poly I default, power switch, scope double-buffer, adaptive audio buffer</li>
+      </ul>
+    </details>
+
+    <details open>
+      <summary><span class="ver">2.4.9</span> Hardware-measured VCA, Poly I allocator, portamento</summary>
+      <ul>
+        <li>Hardware-measured VCA curve, Poly I voice allocator matching IC20 ROM</li>
+        <li>Portamento on all voice modes</li>
+        <li>VCF passband compensation, J106 oscillator mix calibration</li>
+        <li>DC blocker fix, analog noise floor model</li>
+        <li>300% UI scale, free drag-resize, transport fallback</li>
+      </ul>
+    </details>
+
+    <details open>
+      <summary><span class="ver">2.4.8</span> Host drag-resize, AU scale fix</summary>
+      <ul>
+        <li>Add host drag-resize support</li>
+        <li>Fix AU scale handling</li>
+        <li>Add 300% UI scale option</li>
+      </ul>
+    </details>
+
+    <details open>
+      <summary><span class="ver">2.4.7</span> Arp/LFO quantize, UI scaling fix</summary>
+      <ul>
+        <li>Separate arp/LFO quantize parameters for headless hosts</li>
+        <li>Fix UI scaling issues</li>
+        <li>Improve Init preset defaults</li>
+      </ul>
+    </details>
+
+    <details open>
+      <summary><span class="ver">2.4.6.3</span> LV2/CLAP UI scale fix, preset name cleanup, bass boost DC fix</summary>
+      <ul>
+        <li>Fix UI scale not applying on LV2 and CLAP hosts (defer setTransform to after host parenting)</li>
+        <li>Trim long factory preset names to reduce truncation in preset display</li>
+        <li>Increase preset popup grid display from 14 to 16 characters</li>
+        <li>Fix bass boost mode bypassing the DC blocking filter</li>
+        <li>Remove legacy polyBLEP oscillator code (replaced by wavetable DCO)</li>
+        <li>Browser-playable WASM synthesizer on the website</li>
+      </ul>
+    </details>
+
+    <details open>
+      <summary><span class="ver">2.4.6.2</span> Per-model HPF, bass boost biquad, VCF frequency compensation, LFO delay fix</summary>
+      <ul>
+        <li>HPF: per-model frequencies from circuit analysis and ngspice simulation (J6/J60/J106)</li>
+        <li>J106 bass boost: low-shelf biquad modeled from M5218L two-stage op amp circuit (fc=103 Hz, +9.4 dB, Q=0.47)</li>
+        <li>J60 HPF: flat + 3 HPF positions (no bass boost), derived from CD4051 caps into 470K/38K/30K network</li>
+        <li>HPF mode remap on model switch (J106 boost/flat both map to J60 flat), click-free 64-sample crossfade</li>
+        <li>VCF frequency compensation: frequency-dependent power law (2.004 * frq^0.162) replaces flat 1.96x boost, fit to J106 hardware -3dB measurements</li>
+        <li>LFO delay: gate-based reset trigger matching D7811G firmware state machine (was using voice busy state, never re-triggered between notes)</li>
+        <li>DCO Sub: J60/J106 use J6 measured A-taper curve (diode shunt attenuator)</li>
+        <li>VCF scope: Hz readout in top-right corner</li>
+        <li>HPF labels: J60 mode shows correct frequencies (was showing J106 labels)</li>
+      </ul>
+    </details>
+
+    <details open>
+      <summary><span class="ver">2.4.6</span> Per-model DSP framework, chorus filter, SysEx fixes, AU SysEx variant</summary>
+      <ul>
+        <li>Sub oscillator and noise levels calibrated from Juno-6 hardware measurements (11-point tables)</li>
+        <li>J60 VCF frequency curve: calibrated to 248 Hz at slider 0.3, separate from J6/J106 curves</li>
+        <li>J60 noise/sub CV curves from ngspice transistor simulation (2SA1015 PNP + BA662)</li>
+        <li>Per-model parameter framework: every slider has J6, J60, and J106 functions with fallback chain</li>
+        <li>Oscillator mix levels normalized: sub and noise return 0-1, kSubAmp/kNoiseAmp handle scaling</li>
+        <li>kSubAmp corrected to 0.5942 (matches J6 hardware: +1.5 dB over saw)</li>
+        <li>BBD chorus prefilter: 2nd-order Butterworth + 1-pole from ngspice simulation of transistor circuit</li>
+        <li>AU SysEx variant: separate "Ultramaster KR-106 (SysEx)" AU (aumf) for Logic Pro SysEx support</li>
+        <li>SysEx fix: VCA mode and PWM switch bits were inverted vs real Juno-106 hardware</li>
+        <li>SysEx: sub switch inferred from sub level byte (J106 has no physical sub switch)</li>
+        <li>HPF slider: J60 now correctly uses 4-position switch (was showing continuous J6 slider)</li>
+        <li>VCA Level: J6 forced to unity (no patch-level VCA), J60 uses +/-10 dB like J106</li>
+        <li>Settings (voices, oversample, velocity, sync, retrigger) exposed as LV2 parameters</li>
+        <li>Tuning display corrected (was showing -100 cents at center position)</li>
+        <li>Manual-trigger Linux CI workflow</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.4.5.1</span> LV2 arp sync, MIDI output mode, settings menu fix</summary>
+      <ul>
+        <li>Arp DAW sync: cache host transport state for LV2 hosts (Jalv/Zynthian) that only send updates on state changes, with beat position extrapolation between updates</li>
+        <li>Graceful sync fallback: free-run at host tempo when beat position unavailable, fall back to arp rate slider when host provides no transport info</li>
+        <li>MIDI output mode setting: switch between CC/PC (default) and SysEx (IPR/APR, matches real Juno-106). Receiving always accepts both</li>
+        <li>Settings menu: fix not reopening after Component Variance or Keyboard Shortcuts</li>
+        <li>Chorus: remove incorrect BBD charge-well saturation model</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.4.5</span> Juno-60 mode, hardware-calibrated DSP, UI improvements</summary>
+      <ul>
+        <li>Juno-60 preset bank: 128 factory patches from the original manual, dual 60/106 banks with mode switch</li>
+        <li>60 mode uses authentic J6 VCF frequency curve and C1 keyboard tracking by default</li>
+        <li>DCO LFO depth calibrated from Juno-6 hardware (strobe tuner, 11-point A-taper pot curve)</li>
+        <li>VCA: BA662 exponential gain model from schematic (Q17 transistor converter)</li>
+        <li>VCA Level: +/-10 dB range confirmed from hardware recording</li>
+        <li>Scope: dynamic ADSR zoom with continuous A-D-S-R curve, 1.5px smooth path strokes</li>
+        <li>Icon buttons with hover glow, preset sheet close button and ESC dismiss</li>
+        <li>Menu crash fix: deferred callbacks for patch manager actions</li>
+        <li>README.md in release zips, replaces per-platform INSTALL.txt</li>
+        <li>User guide: 60/106 mode docs, merged MIDI mapping, full QWERTY table</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.4.4</span> DAW sync, VCA/VCF corrections, UI improvements</summary>
+      <ul>
+        <li>Arpeggiator DAW sync: locks to host tempo with 9 note divisions (4 Beats to 32nd Note), beat-grid aligned stepping</li>
+        <li>LFO DAW sync: 13 divisions (24 Beats to 64th Note), phase resets on transport start</li>
+        <li>Both sync modes free-run at tempo-matched rate when transport is stopped</li>
+        <li>VCA Level: dB-linear gain law with correct +-10.6 dB range (PC1252H2 circuit analysis)</li>
+        <li>VCF output gain corrected from hardware recordings (self-oscillation matches saw level)</li>
+        <li>Sliders draw their own tick marks (removed from background image), wider hit area</li>
+        <li>Settings menu: two-column layout, radio groups update in-place, toggles stay open for multiple changes</li>
+        <li>Scope: patch bank mode with square cells and nav buttons, dimmer grid lines across all modes</li>
+        <li>VCF scope: frequency response includes output gain, dimmer cutoff marker</li>
+        <li>SysEx send/receive for all parameters, save patch dialog with bank/group/patch selection</li>
+        <li>Standard QWERTY piano layout, keyboard shortcut viewer</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.4.3</span> VCF recalibration from hardware measurements</summary>
+      <ul>
+        <li>Improved self-oscillation: cleaner sine wave, more accurate pitch tracking, consistent volume across the frequency range</li>
+        <li>Self-oscillation and passthrough signal levels now matched</li>
+        <li>Resonance amplitude consistent between R=0.9 and R=1.0 (matches hardware)</li>
+        <li>Noise source shared across all voices (matches hardware single 2SC945 generator), with schematic-derived filtering</li>
+        <li>Fixed click when switching VCA gate/env mode mid-note</li>
+        <li>Fixed click on first note after voice initialization</li>
+        <li>Waveform scope: peak amplitude readout with clip indicator</li>
+        <li>Spectrum analyzer: higher resolution rendering</li>
+        <li>Fixed scope freezing on rapid note retrigger and low notes</li>
+        <li>MIDI program change messages now processed before notes</li>
+        <li>Debug logging auto-disabled in release builds</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.4.2</span> Wavetable DCO, UI improvements</summary>
+      <ul>
+        <li>Replaced polyBLEP oscillators with bandlimited wavetable DCO, eliminates aliasing at all pitches</li>
+        <li>Oscillator runs at base sample rate; VCF handles its own oversampling internally</li>
+        <li>Remove output saturator for cleaner signal path (clip LED at &plusmn;1.0)</li>
+        <li>Master volume: squared audio taper for better low-end control, CC7 mapped</li>
+        <li>Double-click text editing on knobs (was sliders only)</li>
+        <li>Spectrum analyzer: 4096-point FFT for better low-frequency resolution</li>
+        <li>VCF frequency response scope: stop drawing line along bottom of display</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.4.1</span> Oversampling fixes, performance</summary>
+      <ul>
+        <li>Fix sub oscillator PolyBLEP sign (use absolute value for symmetric correction)</li>
+        <li>Fix oscillator noise LP running at wrong rate when oversampled (pass oversampled rate to Init)</li>
+        <li>Fix VCF thermal noise envelope decay being oversampling-dependent (compute coefficient from sample rate)</li>
+        <li>Fix waveform switch ramp halving in duration at higher oversampling (derive from time constant)</li>
+        <li>Hoist audio taper exp() curves from per-sample to per-block in oscillator mixer</li>
+        <li>Replace powf() with expf(logf()) in VCF resonance rolloff inner loop</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.4.0</span> DCO antialiasing</summary>
+      <ul>
+        <li>4th-order PolyBLEP (4-sample window) replaces 2nd-order for ~40 dB better alias suppression</li>
+        <li>Oscillator runs inside VCF oversampling loop (2x/4x) for combined osc+filter antialiasing</li>
+        <li>Fix missing PolyBLEP on sub oscillator (only half the transitions were corrected)</li>
+        <li>Fix saw PolyBLEP sign (was adding instead of subtracting)</li>
+        <li>Remove saw reset blip (384 kHz ring data was likely a resampler artifact)</li>
+        <li>Fix HPF slider drifting on standalone relaunch (mode remap firing on state restore)</li>
+        <li>Fix window scale not persisting on Linux X11</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.3.2</span> Bug fixes, arm64 glibc compatibility</summary>
+      <ul>
+        <li>Fix dropped MIDI notes when CC messages flood processBlock (Ableton + external controllers)</li>
+        <li>Fix J106 attack click at slider position 0 (let DAC RC filter smooth the onset)</li>
+        <li>Add All Notes Off (CC 120/123) to prevent stuck notes on controller disconnect</li>
+        <li>Re-enable DC blocking in J106 HPF modes 0 and 1</li>
+        <li>Build arm64 Linux in Debian Bullseye container (glibc 2.31) for Zynthian/Pi compatibility</li>
+        <li>Component variance section in user's guide</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.3.1</span> MIDI learn, 1982 HPF, DSP calibration</summary>
+      <ul>
+        <li>MIDI learn: right-click any slider or knob to assign a CC, persisted to JSON</li>
+        <li>Multiple parameters can share a CC (e.g. Decay + Release on one knob)</li>
+        <li>Tooltip shows CC assignment; Shift+drag fine, Cmd+drag superfine</li>
+        <li>Patch bank scope mode (P key): 16&times;8 grid with drag-to-launch bouncing ball</li>
+        <li>Component variance editor with Robot/Human/Out of Tune presets</li>
+        <li>1982 continuous HPF (39&ndash;1394 Hz from 11 hardware measurements)</li>
+        <li>1982 VCF frequency recalibrated to 248 Hz at slider 5.5 (service manual)</li>
+        <li>1982 LFO rate circuit model (TA75558S integrator + Schmitt trigger)</li>
+        <li>IR3109 expo converter tanh saturation on 1982 VCF (40 kHz ceiling)</li>
+        <li>Classic VCF Frq Scale setting for authentic 1982 frequency curve</li>
+        <li>Mono retrigger setting, bender/ADSR mode as live performance params</li>
+        <li>Frequency-matched VCF and HPF slider remapping on 1982/1984 switch</li>
+        <li>Custom macOS .icns icon for standalone app</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.3.0</span> Major VCF overhaul</summary>
+      <ul>
+        <li>4x oversampling (cascaded 2x polyphase stages) for clean self-oscillation up to 20 kHz</li>
+        <li>Runtime-selectable 2x/4x oversampling via settings menu</li>
+        <li>Empirical frequency compensation applied post-warp, sample-rate independent</li>
+        <li>Describing function tuned for &plusmn;20 cent self-oscillation pitch tracking</li>
+        <li>Filters run continuously (no reset on note-on, matches real hardware)</li>
+        <li>Per-voice VCF cutoff variance re-enabled (&plusmn;5%)</li>
+        <li>Standalone app icon</li>
+        <li>New: tools/vcf-analyze standalone filter analysis tool</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.2.3</span> Spectrum analyzer, UI improvements, Chorus fix</summary>
+      <ul>
+        <li>Spectrum analyzer scope mode (1024-point FFT, log frequency scale)</li>
+        <li>Custom LED popup menus for settings and patch manager (replaces system menus)</li>
+        <li>Patch selector grid showing all 128 presets in 8x16 layout</li>
+        <li>Settings and patch manager icon buttons (Tabler SVG icons)</li>
+        <li>Fix Chorus I not engaging when kChorusOff param was stale from preset</li>
+        <li>Fix SysEx echo loop toggling chorus state</li>
+        <li>User's guide page</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.2.2</span> ARM64 build, CDN icons, CLAP/LV2 in releases</summary>
+      <ul>
+        <li>Linux ARM64 (Raspberry Pi) build in CI and release workflows</li>
+        <li>CLAP and LV2 formats added to all platform release packages</li>
+        <li>Download button icons from cdn.simpleicons.org</li>
+        <li>Fix LV2 codesign on macOS (sign dylib inside bundle)</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.2.1</span> CSV preset bank, MIDI fixes, Default patch</summary>
+      <ul>
+        <li>Editable CSV patch bank with copy/paste, load/save, and bank file persistence</li>
+        <li>Global settings persistence (zoom, voice count, velocity, arp limit)</li>
+        <li>Fix double-triggered notes from UI keyboard MIDI echo loop</li>
+        <li>Fix stuck notes on hold release (release all voices matching a note)</li>
+        <li>Clean voice allocation on DAW suspend/resume</li>
+        <li>Show "Default" on fresh spawn; scroll to enter patch bank</li>
+        <li>SysEx output on preset change and individual knob tweaks</li>
+        <li>Slider fine control and text editor with bracket notation</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.2.0</span>Clock-domain BBD chorus, Configurable number of voices</summary>
+      <ul>
+        <li>Clock-domain VCO modulation for BBD chorus (replaces linear delay)</li>
+        <li>4-pole cascaded TPT pre/post filters from Juno-6 schematic RC values</li>
+        <li>Configurable 6/8/10 voices via right-click menu, persisted per instance</li>
+        <li>Fix stuck voices when switching unison to poly</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.1.9</span> CLAP and LV2 support</summary>
+      <ul>
+        <li>Add CLAP and LV2 plugin format support</li>
+        <li>Deprecation fixes for newer toolchains</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.1.8</span> MIDI CC/SysEx receive, master volume</summary>
+      <ul>
+        <li>Receive standard MIDI CC and Roland Juno SysEx for all parameters</li>
+        <li>Master volume control placed pre-chorus in signal chain</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.1.7</span>Added Preset Display</summary>
+      <ul>
+        <li>Preset name display with drag-to-scroll and mouse wheel</li>
+        <li>Arrow key and Page Up/Down preset navigation</li>
+        <li>Custom 14-segment LED font</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.1.6</span> Added UI Scaling</summary>
+      <ul>
+        <li>Mono mode: legato when keys overlap (no envelope retrigger)</li>
+        <li>VCF KBD tracking follows portamento glide instead of snapping</li>
+        <li>DCO LFO depth: model 10K wiper-to-ground shunt on 50K linear pot</li>
+        <li>UI scale preference saved/restored in project state</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.1.5</span> About screen, display scaling fix</summary>
+      <ul>
+        <li>About/version screen with vector stroke font in scope display</li>
+        <li>Fix 1x display scaling</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.1.4</span> Scope modes, output gain staging</summary>
+      <ul>
+        <li>3 scope modes: waveform, ADSR, VCF frequency response</li>
+        <li>VCF range extended to 5 Hz &ndash; 50 kHz</li>
+        <li>Output saturation and master volume gain staging improvements</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.1.3</span> VCF frequency compensation, J106 resonance model</summary>
+      <ul>
+        <li>kBaseFreq calibrated from ROM data (5.0 &rarr; 5.53)</li>
+        <li>J106 transistor resonance model (2SA1015-GR PNP)</li>
+        <li>FreqCompensation: corrects 4-pole cascade droop at low Q</li>
+        <li>VCF frequency response scope with analytical transfer function</li>
+        <li>Inverted pulse polarity in J106 mode (80017A positive-first)</li>
+        <li>ADSR: apply first tick immediately on NoteOn (D7811G firmware)</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.1.2</span> BBD charge-well saturation, modulated bandwidth</summary>
+      <ul>
+        <li>Three-stage filter chain matching MN3009 signal path</li>
+        <li>Clock-rate-dependent BBD bandwidth filter that sweeps with LFO</li>
+        <li>Charge-well soft saturation modeling 256 BBD stages</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.1.1</span> VCF self-oscillation tuning fix</summary>
+      <ul>
+        <li>Base compensation on k (actual feedback gain) instead of res&sup2;</li>
+        <li>Fix self-oscillation pitch nearly an octave flat at low cutoff</li>
+        <li>Calibrated against tuner measurements at 220/440/880/1760 Hz</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary><span class="ver">2.0.0</span> Initial JUCE release</summary>
+      <ul>
+        <li>Port from iPlug2 to JUCE framework</li>
+        <li>macOS, Windows, and Linux support</li>
+        <li>VST3, AU, and standalone formats</li>
+        <li>CI/CD with GitHub Actions</li>
+      </ul>
+    </details>
+  </div>
+</body>
+</html>
