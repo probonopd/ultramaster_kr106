@@ -42,7 +42,7 @@ let adsrBoundAD=0, adsrBoundDS=0, adsrBoundSR=0, adsrSustainY=0.5;
 
 function updateScopeData(){
 if(!synth.ready)return;
-const sd=synth.getScopeData();if(!sd){scopeHasData=false;scopeDisplayLen=0;return;}
+const sd=synth.getScopeData();if(!sd)return;
 
 // Two formats: worklet sends {ringL, ringR, sync, writePos}
 //              ScriptProcessor sends {heap, ringOff, ringROff, syncOff, writePos}
@@ -81,7 +81,8 @@ if(!sd.ringL&&synth.mod&&synth.mod._kr106_scope_consumed)synth.mod._kr106_scope_
 // WASM scope runs at ~15 Hz so we hold for 1 frame to match visibility.
 if(peak>=1.0)scopeClipHold=1;
 
-if(peak<1e-6){scopeHasData=false;scopeDisplayLen=0;return}
+// Match plugin threshold (1e-3): above analog noise floor, blanks promptly on note-off
+if(peak<1e-3){scopeHasData=false;scopeDisplayLen=0;return}
 
 // Find two consecutive sync pulses (search backward from end)
 let endDist=-1,startDist=-1;
@@ -640,7 +641,7 @@ let aboutFrame=0;
 
 function buildAboutPixels(w,h){
   // Rasterize text into pixel array
-  const lines=['ULTRAMASTER','KR-106','2.5.6','BUILD 04-14 12:06']; // version and build date updated by Makefile
+  const lines=['ULTRAMASTER','KR-106','2.5.6','BUILD 04-14 19:23']; // version and build date updated by Makefile
   const pixels=[];
   const lineH=10; // 7px glyph + 3px gap
   const totalH=lines.length*lineH;
