@@ -77,6 +77,21 @@ public:
 
   float mSampleRate = 44100.f;
 
+  // Running peak of the oscillator output, used to drive the VCF's
+  // input-envelope follower at base rate (the env is only used to
+  // scale noise seeding, so control-rate updates are audibly identical).
+  float mLastOscPeak = 0.f;
+
+  // Per-voice upsampler pair: 1× → 2× → 4×.
+  // Oscillator runs at base rate (cheap); its output is upsampled to
+  // 4× before feeding into the VCF. The mix bus then sums all voices
+  // at 4× and a single shared decimator pair (in KR106DSP) drops back
+  // to base rate, so we pay upsampling per voice but downsampling
+  // only once across the whole mix.
+  int mOversample = 4;         // 1, 2, or 4 — set by DSP on oversample change
+  kr106::Upsampler2x mOscUp1;  // 1× → 2× (used at 2x and 4x)
+  kr106::Upsampler2x mOscUp2;  // 2× → 4× (used at 4x only)
+
   // --- Unified D7811G firmware tick state (J106 mode) ---
   // The real D7811G runs one main loop at ~238 Hz that computes ADSR and
   // VCF DAC for each voice in sequence. A single tick accumulator keeps
@@ -760,10 +775,23 @@ public:
     mADSR.SetSampleRate(mSampleRate);
     mVCF.SetSampleRate(mSampleRate);
     mVCF.Reset();
-    // Prime the VCF's polyphase resamplers by feeding silent samples.
-    // Without this, the first non-zero sample causes an upsampler transient (click).
-    for (int i = 0; i < 64; i++)
-      mVCF.Process(0.f, 0.01f, 0.f);
+    // Per-voice upsampler pair (1× → 2× → 4×). Uses the same
+    // HIIR half-band coefficients as the shared mix-bus decimator.
+    mOscUp1.set_coefs(kr106::kResamplerCoefs2x);
+    mOscUp2.set_coefs(kr106::kResamplerCoefs2x);
+    mOscUp1.clear_buffers();
+    mOscUp2.clear_buffers();
+    // Prime the upsamplers by pushing a short run of silence so the
+    // first non-zero sample doesn't produce an IIR startup transient.
+    {
+      float a, b, a2, b2;
+      for (int i = 0; i < 32; i++)
+      {
+        mOscUp1.process_sample(a, b, 0.f);
+        mOscUp2.process_sample(a2, b2, a);
+        mOscUp2.process_sample(a2, b2, b);
+      }
+    }
     mOsc.Init(mSampleRate);
 
     // Precomputed constants for VCF frequency calculation.
@@ -781,7 +809,13 @@ public:
     UpdatePortaCoeff();
   }
 
-  void ProcessSamplesAccumulating(T** inputs, T** outputs, int nInputs, int nOutputs, int startIdx,
+  // Process a block of base-rate samples.
+  //
+  // mixBus: shared mono mix bus at mOversample× the base sample rate,
+  //         sized (startIdx + nFrames) * mOversample floats. This voice
+  //         ACCUMULATES into mixBus[i*mOversample + k]. The DSP is
+  //         responsible for clearing it and decimating afterwards.
+  void ProcessSamplesAccumulating(T** inputs, float* mixBus, int nInputs, int startIdx,
                                   int nFrames)
   {
     double pitch     = mPitch;
@@ -801,7 +835,9 @@ public:
     T* lfoBuffer = (nInputs > 0 && inputs[0]) ? inputs[0] : nullptr;
     // Raw LFO triangle (before onset envelope) for J106 integer VCF path (index 1)
     T* lfoRawBuffer = (nInputs > 1 && inputs[1]) ? inputs[1] : nullptr;
-    // Shared noise source (index 2)
+    // Shared noise source (index 2) — generated at base rate; held
+    // across the 4 sub-samples. Any aliased images from the hold sit
+    // above base Nyquist and are removed by the mix-bus decimator.
     T* noiseBuffer = (nInputs > 2 && inputs[2]) ? inputs[2] : nullptr;
     float noiseAT = (noiseBuffer && mDcoNoise > 0.f) ? mDcoNoise : 0.f;
 
@@ -881,16 +917,11 @@ public:
       mDcoPitchSmooth += (cps - mDcoPitchSmooth) * mDacSmoothCoeff;
       cps = mDcoPitchSmooth;
 
-      // Safety clamp
+      // Safety clamp — nothing to write, skip the inner 4× loop.
       if (cps <= 0.f || cps >= 0.5f)
-      {
-        outputs[0][i] += 0.;
-        if (nOutputs > 1)
-          outputs[1][i] += 0.;
         continue;
-      }
 
-      // --- VCF frequency calculation ---
+      // --- VCF frequency calculation (base-rate normalized to base Nyquist) ---
       float vcfCPS;
       if (mModel != kJ106)
       {
@@ -924,32 +955,60 @@ public:
         vcfCPS = vcfHz * mInvNyq;
       }
 
-      // --- Oscillator (1x) + oversampled VCF ---
-      // Wavetable oscillator is bandlimited by construction, runs at base rate.
-      // VCF handles its own upsampling/downsampling internally.
-      bool sync = false;
-      float oscOut = mOsc.Process(cps, pw, mSawOn, mPulseOn, mSubOn, mDcoSub, 0.f, sync);
+      // --- VCF coefficient update (control rate, ~once per base sample) ---
+      // This is where tanf, expf, powf etc. live. Running it 1× instead of
+      // 4× is the whole point of the refactor.
+      mVCF.TrackInputEnv(mLastOscPeak);
+      mVCF.UpdateCoeffs(vcfCPS, mVcfResSmooth);
 
-      // Noise mixed from shared source (single generator, matches hardware)
-      if (noiseAT > 0.f)
-        oscOut += static_cast<float>(noiseBuffer[i]) * mOsc.mNoiseAmp * noiseAT;
-      // RC smooth the resonance CV (hardware: .01uF cap before non-inverting op amp)
-      mVcfResSmooth += (mVcfRes - mVcfResSmooth) * mDacSmoothCoeff;
-      float signal = mVCF.Process(oscOut, vcfCPS, mVcfResSmooth);
-
-      // --- VCA (BA662 OTA, driven by model-specific exponential converter) ---
+      // --- VCA gain (base-rate; same gain applied to all 4 sub-samples) ---
       // RC smooth the gate envelope (same 1ms DAC output filter as ADSR)
       mGateEnvSmooth += (mADSR.mGateEnv - mGateEnvSmooth) * mDacSmoothCoeff;
-      float vcaOut;
-      if (mVcaMode)
-        vcaOut = signal * kr106::VCAGain(mGateEnvSmooth, mModel) * velocity * mVcaGainScale; // Gate mode
-      else
-        vcaOut = signal * kr106::VCAGain(env, mModel) * velocity * mVcaGainScale; // ADSR mode
+      float vcaGain = mVcaMode
+        ? kr106::VCAGain(mGateEnvSmooth, mModel) * velocity * mVcaGainScale
+        : kr106::VCAGain(env,            mModel) * velocity * mVcaGainScale;
 
-      // Accumulate mono (chorus does stereo later)
-      outputs[0][i] += static_cast<T>(vcaOut);
-      if (nOutputs > 1)
-        outputs[1][i] += static_cast<T>(vcaOut);
+      // Resonance CV smoothing stays base-rate (models .01uF cap on RES CV)
+      mVcfResSmooth += (mVcfRes - mVcfResSmooth) * mDacSmoothCoeff;
+
+      // --- Oscillator at 1× (base rate) ---
+      // PrepareBlock hoists log2f + OctaveToTable + PW clamp etc; the
+      // following single ProcessSample call is the whole per-base-sample
+      // oscillator cost. Noise is added here, before upsampling, so the
+      // upsampler's half-band filter bandlimits the noise as well.
+      mOsc.PrepareBlock(cps, pw, mSawOn, mPulseOn, mSubOn, mDcoSub);
+      bool syncBase = false;
+      float oscOut = mOsc.ProcessSample(syncBase);
+      if (noiseAT > 0.f)
+        oscOut += static_cast<float>(noiseBuffer[i]) * mOsc.mNoiseAmp * noiseAT;
+      mLastOscPeak = fabsf(oscOut);
+      (void)syncBase;
+
+      // --- Upsample and VCF at Nx rate, accumulate into mix bus ---
+      float* mixSlot = mixBus + i * mOversample;
+      if (mOversample == 4)
+      {
+        float s2_0, s2_1;
+        mOscUp1.process_sample(s2_0, s2_1, oscOut);
+        float s4[4];
+        mOscUp2.process_sample(s4[0], s4[1], s2_0);
+        mOscUp2.process_sample(s4[2], s4[3], s2_1);
+        mixSlot[0] += mVCF.ProcessSample(s4[0]) * vcaGain;
+        mixSlot[1] += mVCF.ProcessSample(s4[1]) * vcaGain;
+        mixSlot[2] += mVCF.ProcessSample(s4[2]) * vcaGain;
+        mixSlot[3] += mVCF.ProcessSample(s4[3]) * vcaGain;
+      }
+      else if (mOversample == 2)
+      {
+        float s2_0, s2_1;
+        mOscUp1.process_sample(s2_0, s2_1, oscOut);
+        mixSlot[0] += mVCF.ProcessSample(s2_0) * vcaGain;
+        mixSlot[1] += mVCF.ProcessSample(s2_1) * vcaGain;
+      }
+      else // 1x — no upsampling
+      {
+        mixSlot[0] += mVCF.ProcessSample(oscOut) * vcaGain;
+      }
     }
   }
 };

@@ -25,6 +25,26 @@
     <h2>Changelog <a href="index.html">&larr; Back to KR-106</a></h2>
 
     <details open>
+      <summary><span class="ver">2.5.7</span> Shared VCF downsampling, variable oversample, compiler optimization</summary>
+      <ul>
+        <li>Shared mix-bus decimator: per-voice upsample, single shared downsample (15-18% CPU reduction)</li>
+        <li>Variable VCF oversample (Off/2x/4x) via settings menu and LV2 parameter</li>
+        <li>AnalogBW filter runs at oversampled rate inside the decimator loop</li>
+        <li>Release build flags: -ffp-contract=fast, -fno-math-errno (Clang/GCC), /fp:contract (MSVC)</li>
+        <li>Standalone DSP profiler tool (tools/profile)</li>
+      </ul>
+    </details>
+
+    <details open>
+      <summary><span class="ver">2.5.6</span> Fix silence at sample rates below 96 kHz</summary>
+      <ul>
+        <li>Fix AnalogBW filter silence at 44.1/48 kHz (cutoff exceeded Nyquist, causing NaN)</li>
+        <li>LFO onset ramp advances during release tails (matches ROM firmware behavior)</li>
+        <li>Chorus wet noise reduced, SysEx Chorus II switch byte fix</li>
+      </ul>
+    </details>
+
+    <details>
       <summary><span class="ver">2.5.5</span> VCF input gain calibration, CV smoothers, PWM fix, zoom persistence</summary>
       <ul>
         <li>VCF FreqGain: empirical bell curve in log-frequency space matches hardware passband level across all 128 factory presets</li>

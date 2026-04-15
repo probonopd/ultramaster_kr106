@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(KR106 VERSION 2.5.6)
+project(KR106 VERSION 2.5.7)
 
 set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum macOS version")
 
@@ -90,6 +90,23 @@ target_compile_definitions(KR106 PUBLIC
     _USE_MATH_DEFINES
 )
 
+# Release DSP optimization flags: FMA fusion + skip errno on math calls.
+# Safe for audio DSP (no NaN checks, no errno reads). ~3-4% measured improvement.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  target_compile_options(KR106 PRIVATE
+    $<$<CONFIG:Release>:
+      -ffp-contract=fast
+      -fno-math-errno
+    >
+  )
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+  target_compile_options(KR106 PRIVATE
+    $<$<CONFIG:Release>:
+      /fp:contract
+    >
+  )
+endif()
+
 target_link_libraries(KR106 PRIVATE
     juce::juce_audio_utils
     juce::juce_dsp
@@ -177,6 +194,16 @@ if(APPLE)
         juce::juce_dsp
         KR106BinaryData
     )
+
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+      target_compile_options(KR106SysEx PRIVATE
+        $<$<CONFIG:Release>:-ffp-contract=fast -fno-math-errno>
+      )
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+      target_compile_options(KR106SysEx PRIVATE
+        $<$<CONFIG:Release>:/fp:contract>
+      )
+    endif()
 endif()
 
 # macOS: replace JUCE's auto-generated icon with our custom .icns (rounded corners + transparency)

@@ -669,7 +669,9 @@ bool KR106Editor::keyPressed(const juce::KeyPress& key)
     if (code == '`' || code == 0x60) { mQwertyBase = juce::jmax(0, mQwertyBase - 12);  qwertyAllNotesOff(); return true; }
     if (code == '1')                 { mQwertyBase = juce::jmin(108, mQwertyBase + 12); qwertyAllNotesOff(); return true; }
 
-    // QWERTY note keys
+    // QWERTY note keys — pass through if Cmd/Ctrl is held (e.g. Cmd+Q to quit)
+    if (key.getModifiers().isCommandDown())
+        return false;
     int note = qwertyToNote(code);
     if (note >= 0 && note <= 127)
     {

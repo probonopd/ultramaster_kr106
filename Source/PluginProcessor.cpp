@@ -1152,9 +1152,7 @@ void KR106AudioProcessor::parameterChanged(int paramIdx, float newValue)
     int v = juce::roundToInt(newValue);
     int os = (v <= 1) ? 1 : (v <= 3) ? 2 : 4;
     mVcfOversample = os;
-    mDSP.ForEachVoice([os](kr106::Voice<float>& voice) {
-      voice.mVCF.SetOversample(os);
-    });
+    mDSP.SetOversample(os);
   }
   else if (paramIdx == kSettingIgnoreVel)
   {

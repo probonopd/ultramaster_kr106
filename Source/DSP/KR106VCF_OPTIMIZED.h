@@ -15,13 +15,31 @@
 // physics rather than requiring per-parameter tuning.
 //
 // ============================================================
+// ARCHITECTURE (post-refactor, April 2026)
+// ============================================================
+// VCF runs permanently at 4x the base sample rate. Upsampling has been
+// eliminated entirely — the oscillator runs natively at 4x and feeds
+// the VCF directly. Downsampling happens ONCE on the summed voice bus
+// at the DSP level, not per-voice.
+//
+// API:
+//   UpdateCoeffs(frq, res)  — control-rate, call once per base sample
+//                             (or whenever frq/res change). Recomputes
+//                             g, k, kFbScale, etc. Writes into mC.
+//   ProcessSample(input)    — audio-rate at 4x, called 4× per base sample.
+//                             Uses coefficients cached in mC.
+//
+// The caller is responsible for driving ProcessSample at 4× the base
+// sample rate. No internal resampling.
+//
+// ============================================================
 // OPTIMIZATION NOTES
 // ============================================================
 // Control-rate computation (tanf, expf via ResK, powf via FreqComp,
 // SoftClipK, InputComp, kFbScale, g1/G powers, 1/(1+kG)) is hoisted
-// into Process() and cached on (frq, res, oversample, j106). Held
-// notes pay nothing; modulated cutoff/res hits libm transcendentals
-// once per output sample instead of once per oversampled sample.
+// into UpdateCoeffs() and cached on (frq, res, j106). Held notes pay
+// nothing; modulated cutoff/res hits libm transcendentals once per
+// base-rate sample, not once per 4×-oversampled sample.
 //
 // Per-sample denormal flushing replaced with a 1e-20f DC bias on
 // mS[0]. FTZ-independent — works under WASM where there is no FTZ
@@ -34,6 +52,10 @@ namespace kr106 {
 // ============================================================
 // 12-coefficient allpass polyphase network for 2x up/downsampling.
 // Same algorithm and coefficients as Laurent de Soras' HIIR library (WTFPL).
+//
+// Retained here so the DSP-level mix-bus decimator can reuse the same
+// Downsampler2x struct. Upsampler2x is no longer used by the VCF but
+// kept available for any caller that still wants it.
 static constexpr int kNumResamplerCoefs = 12;
 
 struct Upsampler2x
@@ -105,6 +127,15 @@ struct Downsampler2x
   }
 };
 
+// Shared coefficient table (same as HIIR 12-tap half-band).
+// Exposed so the DSP-level decimator pair can initialize identically.
+static constexpr double kResamplerCoefs2x[kNumResamplerCoefs] = {
+  0.036681502163648017, 0.13654762463195794, 0.27463175937945444,
+  0.42313861743656711, 0.56109869787919531, 0.67754004997416184,
+  0.76974183386322703, 0.83988962484963892, 0.89226081800387902,
+  0.9315419599631839,  0.96209454837808417, 0.98781637073289585
+};
+
 // ============================================================
 // 4-pole TPT Cascade LPF (models IR3109 OTA filter)
 // ============================================================
@@ -112,32 +143,45 @@ struct Downsampler2x
 // and per-stage OTA tanh nonlinearity (IR3109 model). State variables
 // are integrator outputs — coefficient-independent, so per-sample
 // cutoff modulation is artifact-free.
+//
+// Runs at 4× the caller's base sample rate. See UpdateCoeffs /
+// ProcessSample for the control/audio split.
 struct VCF
 {
   float mS[4] = {}; // integrator states
   bool mJ106Res = false;            // true = J106 resonance curve, false = J6
-  int mOversample = 4;              // 1, 2, or 4 — runtime selectable
   uint32_t mNoiseSeed = 123456789u; // thermal noise PRNG state
   float mInputEnv = 0.f;            // peak envelope follower for noise suppression
-  float mEnvDecay = 0.999f;         // per-output-sample decay (22 ms time constant)
-  float mSampleRate = 44100.f;
+  float mEnvDecay = 0.999f;         // per-base-sample decay (22 ms time constant)
+  float mSampleRate = 44100.f;      // BASE sample rate (filter runs at 4× this)
 
-  Upsampler2x mUp1, mUp2;
-  Downsampler2x mDown1, mDown2;
+  // Oversample factor (1, 2, or 4). Determines how frq is scaled
+  // for the tan() coefficient and noise seeding. Caller is responsible
+  // for driving ProcessSample at this rate.
+  int mOversample = 4;
+  float mOverScale = 0.25f;  // 1.0 / mOversample
+
+  void SetOversample(int os)
+  {
+    mOversample = (os <= 1) ? 1 : (os <= 2) ? 2 : 4;
+    mOverScale = 1.f / static_cast<float>(mOversample);
+    InvalidateCache();
+  }
 
   // ----- control-rate cache -----
-  // Cached on (frq, res, oversample, j106) so held notes skip the
-  // entire Process() preamble.
+  // Cached on (frq, res, j106) so held notes skip the entire
+  // UpdateCoeffs() preamble.
   float mCacheFrq = -1.f;
   float mCacheRes = -1.f;
-  int   mCacheOver = -1;
   bool  mCacheJ106 = false;
   float mCacheK = 0.f;
   float mCacheG = 0.f;
   float mCacheFreqGain = 1.f;
   float mCacheResByte = 0.f;   // raw slider value 0-127 for table lookup
 
-  // ----- per-Process() coefficients -----
+  // ----- per-UpdateCoeffs() derived coefficients -----
+  // Everything ProcessSample needs in its inner loop. Recomputed at
+  // control rate (i.e. once per base sample or less, if nothing moved).
   struct Coeffs
   {
     float k;
@@ -153,29 +197,13 @@ struct VCF
     float dfCoeff;       // describing function coefficient (freq-dependent)
   } mC;
 
-  VCF()
-  {
-    static constexpr double kCoeffs2x[12] = {
-      0.036681502163648017, 0.13654762463195794, 0.27463175937945444,
-      0.42313861743656711, 0.56109869787919531, 0.67754004997416184,
-      0.76974183386322703, 0.83988962484963892, 0.89226081800387902,
-      0.9315419599631839,  0.96209454837808417, 0.98781637073289585
-    };
-    mUp1.set_coefs(kCoeffs2x);
-    mUp2.set_coefs(kCoeffs2x);
-    mDown1.set_coefs(kCoeffs2x);
-    mDown2.set_coefs(kCoeffs2x);
-  }
+  VCF() {}
 
   void InvalidateCache() { mCacheFrq = -1.f; }
 
   void Reset()
   {
     mS[0] = mS[1] = mS[2] = mS[3] = 0.f;
-    mUp1.clear_buffers();
-    mUp2.clear_buffers();
-    mDown1.clear_buffers();
-    mDown2.clear_buffers();
     mInputEnv = 0.f;
     InvalidateCache();
   }
@@ -183,20 +211,9 @@ struct VCF
   void SetSampleRate(float sampleRate)
   {
     mSampleRate = sampleRate;
-    // Per output-rate sample (22 ms time constant).
+    // Per base-rate sample (22 ms time constant). mInputEnv is updated
+    // in UpdateCoeffs (control rate), so its decay is at base rate.
     mEnvDecay = expf(-1.f / (0.022f * sampleRate));
-    InvalidateCache();
-  }
-
-  void SetOversample(int factor)
-  {
-    int prev = mOversample;
-    mOversample = (factor <= 1) ? 1 : (factor == 2) ? 2 : 4;
-    if (mOversample == 4 && prev == 2)
-    {
-      mUp2.clear_buffers();
-      mDown2.clear_buffers();
-    }
     InvalidateCache();
   }
 
@@ -284,11 +301,10 @@ struct VCF
     return std::clamp(dac / 128.f, 0.f, 127.f);
   }
 
-  static float FreqCompensationClamped(float k, float frq, float resByte, float sampleRate)
+  static float FreqCompensationClamped(float k, float frqBase, float resByte, float sampleRate)
   {
-    // Convert runtime frq to equivalent freq byte for table lookup
-    // frq is at the 4x-oversampled rate, so scale back to base rate
-    float freqByte = frqToByte(frq * 4.f, sampleRate);
+    // frqBase is normalized to the BASE sample rate's Nyquist (not 4×).
+    float freqByte = frqToByte(frqBase, sampleRate);
 
     // Bilinear interpolation on the 2D lookup table
     int fi = 0;
@@ -390,21 +406,26 @@ struct VCF
     return y;
   }
 
-  // frq: normalized cutoff [0, ~0.95] where 1.0 = Nyquist (base rate)
+  // ============================================================
+  // Control-rate coefficient update.
+  // ============================================================
+  // Call once per base-rate sample (or whenever frq/res change).
+  // Recomputes all transcendentals from frq/res and writes mC.
+  //
+  // frq: normalized cutoff at the BASE sample rate [0, ~0.95].
+  //      1.0 == base-rate Nyquist.
   // res: resonance amount [0, 1]
-  float Process(float input, float frq, float res)
+  void UpdateCoeffs(float frq, float res)
   {
     frq = std::min(frq, 0.95f);
 
     // ---- Cache the parameter-derived terms ----
     // tanf, expf (in ResK), and powf (in FreqComp) only re-fire when
-    // frq, res, oversample factor, or J106 mode actually changes.
-    if (frq != mCacheFrq || res != mCacheRes ||
-        mOversample != mCacheOver || mJ106Res != mCacheJ106)
+    // frq, res, or J106 mode actually changes.
+    if (frq != mCacheFrq || res != mCacheRes || mJ106Res != mCacheJ106)
     {
       mCacheFrq  = frq;
       mCacheRes  = res;
-      mCacheOver = mOversample;
       mCacheJ106 = mJ106Res;
 
       float k = mJ106Res ? ResK_J106(res) : ResK_J6(res);
@@ -424,20 +445,17 @@ struct VCF
 
       mCacheK = k;
 
-      // ProcessSample used to clamp the already-divided frq to 0.85
-      // to keep tanf away from Nyquist; preserve that here.
-      float overScale = (mOversample == 4) ? 0.25f
-                      : (mOversample == 2) ? 0.5f
-                      : 1.f;
-      float frqOver = std::min(frq * overScale, 0.85f);
+      // tanf argument clamped to 0.85 to stay away from Nyquist.
+      // frqOver is frq normalized to the 4× rate's Nyquist.
+      float frqOver = std::min(frq * mOverScale, 0.85f);
 
-      // FreqComp from 2D hardware-calibrated lookup table.
-      float fc = FreqCompensationClamped(k, frq * 0.25f, mCacheResByte, mSampleRate);
+      // FreqComp from 2D hardware-calibrated lookup table (takes base-rate frq).
+      float fc = FreqCompensationClamped(k, frq, mCacheResByte, mSampleRate);
       mCacheG = tanf(frqOver * static_cast<float>(M_PI) * 0.5f) * fc;
       mCacheFreqGain = FreqGain(frq);
     }
 
-    // ---- Cheap per-Process derivations from cached k, g ----
+    // ---- Cheap per-block derivations from cached k, g ----
     const float k    = mCacheK;
     const float g    = mCacheG;
     const float g1   = g / (1.f + g);
@@ -455,9 +473,7 @@ struct VCF
     mC.comp        = InputComp(k, mCacheFreqGain);
     mC.otaScale    = OTAScaleForFreq(mCacheFrq, mCacheResByte);
 
-    // Describing function pitch compensation coefficient. Constant 0.6
-    // gives +/-2 cents from 220 Hz up; freq ramp was vestigial and went
-    // sharp at HF (+5.6 cents at 7 kHz).
+    // Describing function pitch compensation coefficient.
     mC.dfCoeff     = 0.6f;
     // BA662 tanh saturation is set by 2*Vt, independent of IR3109 bias
     // current -- amplitude is naturally flat.
@@ -465,79 +481,44 @@ struct VCF
     mC.invKFbScale = 1.f / mC.kFbScale;
 
     // Output scaling disabled -- self-osc level is now controlled by
-    // fbBoost alone. OutputScale was attenuating the passband at high
-    // freq+res which caused KBD-tracking patches to lose level at high notes.
+    // fbBoost alone.
     mC.outputScale = 1.f;
-    if (false) // DISABLED
-    {
-      float frqFactor = std::clamp((mCacheFrq - 0.02f) * 20.f, 0.f, 1.f);
-      float resFactor = std::clamp((k - 2.f) * 0.5f, 0.f, 1.f);           // ramps 0->1 from k=2 to k=4
-      float atten = frqFactor * resFactor * 0.5f;                           // max 0.5 = -6 dB
-      mC.outputScale = 1.f - atten;
-    }
 
     {
-      float overScale = (mOversample == 4) ? 0.25f
-                      : (mOversample == 2) ? 0.5f
-                      : 1.f;
-      float frqEq = std::min(frq * overScale, 0.85f);
+      float frqEq = std::min(frq * mOverScale, 0.85f);
       mC.hfFade = std::clamp((0.12f - frqEq) * 25.f, 0.f, 1.f);
     }
 
     // Adaptive noise level — control rate.
-    // Used only to seed self-oscillation startup; updating once per
-    // output sample is inaudibly identical.
-    mInputEnv = std::max(fabsf(input), mInputEnv * mEnvDecay);
+    // Decays at base-rate; its only role is seeding self-oscillation
+    // startup, so control-rate update is inaudibly identical to per-sample.
     {
       float stateEnergy = fabsf(mS[0]) + fabsf(mS[1]) + fabsf(mS[2]) + fabsf(mS[3]);
       float energy = std::max(mInputEnv, stateEnergy);
       mC.noiseLevel = 1e-2f / (static_cast<float>(mOversample) * (1.f + energy * 1000.f));
     }
-
-    if (mOversample == 4)
-      return Process4x(input);
-    else if (mOversample == 2)
-      return Process2x(input);
-    else
-      return ProcessSample(input);
   }
 
-private:
-  // 2x oversampled
-  float Process2x(float input)
+  // Update the envelope follower with the latest input magnitude.
+  // Separate from UpdateCoeffs so the caller can drive it however
+  // it wants (e.g. with the osc output at base rate). No-op impact
+  // if called inside the 4× inner loop too — just slightly faster
+  // tracking, which is harmless.
+  void TrackInputEnv(float input)
   {
-    float up[2], down[2];
-    mUp1.process_sample(up[0], up[1], input);
-    down[0] = ProcessSample(up[0]);
-    down[1] = ProcessSample(up[1]);
-    return mDown1.process_sample(down);
+    mInputEnv = std::max(fabsf(input), mInputEnv * mEnvDecay);
   }
 
-  // 4x oversampled
-  float Process4x(float input)
-  {
-    float up2x[2];
-    mUp1.process_sample(up2x[0], up2x[1], input);
-
-    float down4x[2], down2x[2];
-
-    float up4x_a[2];
-    mUp2.process_sample(up4x_a[0], up4x_a[1], up2x[0]);
-    down4x[0] = ProcessSample(up4x_a[0]);
-    down4x[1] = ProcessSample(up4x_a[1]);
-    down2x[0] = mDown2.process_sample(down4x);
-
-    float up4x_b[2];
-    mUp2.process_sample(up4x_b[0], up4x_b[1], up2x[1]);
-    down4x[0] = ProcessSample(up4x_b[0]);
-    down4x[1] = ProcessSample(up4x_b[1]);
-    down2x[1] = mDown2.process_sample(down4x);
-
-    return mDown1.process_sample(down2x);
-  }
-
-  // Inner per-sample filter at the oversampled rate.
-  // No transcendentals on params, no FTZ dependency.
+  // ============================================================
+  // Audio-rate inner sample. Call 4× per base sample, using
+  // coefficients from the most recent UpdateCoeffs().
+  // ============================================================
+  // The assembly survey showed clang was leaving this out-of-line —
+  // 5 bl-branches per base sample per voice (1 osc + 4 vcf), plus lost
+  // opportunities to hoist mC loads across the 4 consecutive calls and
+  // to schedule instructions across the call boundary. Forcing inline
+  // reclaimed ~2–4% CPU in microbenchmarks on Apple Silicon.
+  __attribute__((always_inline)) inline
   float ProcessSample(float input)
   {
     // Fast white noise via bit-trick float conversion.
@@ -563,10 +544,6 @@ private:
     float u = (input * mC.comp - mC.k * fbSig) * mC.invDen;
 
     // Per-stage describing function pitch compensation.
-    // The IR3109 OTA stages (kOTAScale=0.35) have effective gain < 1
-    // at self-oscillation amplitude, pulling pitch flat. dfGain boosts
-    // g1 to compensate. Tuned against Juno-6 SN#193284 self-oscillation
-    // pitch data: ±5 cents from 55–1760 Hz at R=1.0, ±3 cents at R=0.9.
     float stateAmp = fabsf(mS[3]);
     float dfGain = 1.f / sqrtf(1.f + mC.dfCoeff * stateAmp * stateAmp);
     dfGain = std::max(dfGain, 0.65f);
@@ -584,6 +561,17 @@ private:
     // Output gain: InputComp * outputGain preserves passband level (1.22x).
     // Self-osc level calibrated from hardware: ~1.07x pulse at R=127.
     return lp4 * 3.22f * mC.outputScale;
+  }
+
+  // Convenience wrapper: run one base-rate sample through a single
+  // ProcessSample (no oversampling). Only useful for priming /
+  // diagnostics — normal use is to call UpdateCoeffs + 4×
+  // ProcessSample from the voice's inner loop.
+  float Process(float input, float frq, float res)
+  {
+    UpdateCoeffs(frq, res);
+    TrackInputEnv(input);
+    return ProcessSample(input);
   }
 };
 

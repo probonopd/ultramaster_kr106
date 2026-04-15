@@ -182,6 +182,11 @@ public:
     mLFORawBuffer.reserve(4096);
     mSyncBuffer.reserve(4096);
     mModulations.resize(kNumModulations, nullptr);
+
+    // Shared mix-bus decimator pair (same coefficients as the
+    // per-voice pair used to inside the VCF).
+    mMixDown1.set_coefs(kr106::kResamplerCoefs2x);
+    mMixDown2.set_coefs(kr106::kResamplerCoefs2x);
   }
 
   // --- Voice container helpers ---
@@ -422,6 +427,12 @@ public:
       mModulations.resize(kNumModulations, nullptr);
     }
 
+    // Size the Nx mix bus for this block.
+    const int nFramesOS = nFrames * mOversample;
+    if (static_cast<int>(mMixBusOS.size()) < nFramesOS)
+      mMixBusOS.resize(nFramesOS, 0.f);
+    std::memset(mMixBusOS.data(), 0, sizeof(float) * nFramesOS);
+
     memset(mSyncBuffer.data(), 0, nFrames * sizeof(T));
     int nv = static_cast<int>(NVoices());
     int scopeVoice = -1;
@@ -451,11 +462,56 @@ public:
       [this](int note, int offset) { SendToSynth(note, true,  127, offset); },
       [this](int note, int offset) { SendToSynth(note, false, 0,   offset); });
 
+    // Voices accumulate into the Nx mono mix bus.
     for (auto& v : mVoices)
     {
       if (!v->GetBusy()) continue;
       v->mLfoEnvAmp = mLFO.mAmp;
-      v->ProcessSamplesAccumulating(mModulations.data(), outputs, kNumModulations, nOutputs, 0, nFrames);
+      v->ProcessSamplesAccumulating(mModulations.data(), mMixBusOS.data(),
+                                    kNumModulations, 0, nFrames);
+    }
+
+    // Decimate Nx mono mix bus down to base rate, writing into outputs[0].
+    // AnalogBW runs at the oversampled rate for all modes.
+    {
+      const float* mix = mMixBusOS.data();
+      if (mOversample == 4)
+      {
+        for (int s = 0; s < nFrames; s++)
+        {
+          float a0 = mAnalogBW.process(mix[0]);
+          float a1 = mAnalogBW.process(mix[1]);
+          float a2 = mAnalogBW.process(mix[2]);
+          float a3 = mAnalogBW.process(mix[3]);
+          float a[2] = { a0, a1 };
+          float b[2] = { a2, a3 };
+          float s2_0 = mMixDown2.process_sample(a);
+          float s2_1 = mMixDown2.process_sample(b);
+          float s1[2] = { s2_0, s2_1 };
+          outputs[0][s] = static_cast<T>(mMixDown1.process_sample(s1));
+          mix += 4;
+        }
+      }
+      else if (mOversample == 2)
+      {
+        for (int s = 0; s < nFrames; s++)
+        {
+          float a0 = mAnalogBW.process(mix[0]);
+          float a1 = mAnalogBW.process(mix[1]);
+          float s1[2] = { a0, a1 };
+          outputs[0][s] = static_cast<T>(mMixDown1.process_sample(s1));
+          mix += 2;
+        }
+      }
+      else // 1x — no decimation
+      {
+        for (int s = 0; s < nFrames; s++)
+          outputs[0][s] = static_cast<T>(mAnalogBW.process(mix[s]));
+      }
+      // Mirror to right channel so the rest of the pre-chorus mono
+      // chain sees consistent data (chorus overwrites both later).
+      if (nOutputs > 1)
+        memcpy(outputs[1], outputs[0], nFrames * sizeof(T));
     }
 
     // Scope sync
@@ -494,12 +550,8 @@ public:
       outputs[0][s] += static_cast<T>(n);
     }
 
-    // Analog bandwidth: models aggregate HF rolloff from IR3109 output,
-    // BA662 VCA, and mixing stage. Measured ~1.2 dB/oct steeper than DSP
-    // from hardware noise sweep at F=127 R=0. 1-pole at 33 kHz gives
-    // ~-1.5 dB at 20 kHz, ~-3.5 dB at 40 kHz, matching the deficit.
-    for (int s = 0; s < nFrames; s++)
-      outputs[0][s] = static_cast<T>(mAnalogBW.process(static_cast<float>(outputs[0][s])));
+    // (Analog bandwidth is now applied at 4× inside the decimation loop
+    // above — no second pass needed here.)
 
     // VCA level before chorus (matches hardware: VCA IC5 → Chorus BBD)
     for (int s = 0; s < nFrames; s++)
@@ -535,7 +587,15 @@ public:
   {
     mSampleRate = static_cast<float>(sampleRate);
     mDacSmoothCoeff = 1.f - expf(-1.f / (0.001f * mSampleRate)); // 1ms RC tau
+
+    // Saw tables are clocked at the base sample rate — the oscillator
+    // runs at 1×, and its output is upsampled per-voice into the 4×
+    // mix bus before hitting the VCF (see Voice.h). This keeps the
+    // oscillator's interpolation cost where it was in the original
+    // architecture while still sharing the mix-bus decimator across
+    // voices for a net CPU win.
     mSawTables.Init(mSampleRate);
+
     ForEachVoice([this, sampleRate, blockSize](kr106::Voice<T>& v) {
       v.SetSampleRateAndBlockSize(sampleRate, blockSize);
       v.mOsc.SetTables(&mSawTables);
@@ -550,7 +610,15 @@ public:
     mHPF.SetSampleRate(mSampleRate);
     mHPF.Init();
     mHPF.SetMode(1);
-    mAnalogBW.init(38000.f, static_cast<float>(mSampleRate));
+    // Analog bandwidth filter now runs on the 4× mix bus, BEFORE the
+    // decimator (see ProcessBlock). Initializing at 4× the base rate
+    // means the 38 kHz pole lands where the hardware calibration
+    // expected it, regardless of host sample rate. At 44.1k/48k base
+    // the old code path clamped fc to ~0.45 * baseNyq, collapsing the
+    // pole to ~20 kHz and giving more top-end rolloff than intended;
+    // running at 4× fixes that.
+    mAnalogBW.init(38000.f, static_cast<float>(mSampleRate) * static_cast<float>(mOversample));
+    mAnalogBW.reset();
     mChorus.Init(mSampleRate);
     mFloorNoise.Init(mSampleRate); 
     mFloorRipple.SetMainsHz(60.f, mSampleRate);  // 50.f for EU
@@ -567,6 +635,33 @@ public:
     mNoiseBuffer.resize(blockSize);
     mSyncBuffer.resize(blockSize);
     mModulations.resize(kNumModulations);
+
+    // Prime the shared mix-bus decimators. Without this, the first
+    // non-zero sample through the chain causes a startup transient
+    // (the half-band IIRs need a few samples of history). Feeding
+    // silence through here was previously done inside each voice's
+    // VCF.Process priming loop; we now do it once at the mix-bus level.
+    mMixDown1.clear_buffers();
+    mMixDown2.clear_buffers();
+    {
+      const int nFramesOS = std::max(16, blockSize) * mOversample;
+      if (static_cast<int>(mMixBusOS.size()) < nFramesOS)
+        mMixBusOS.resize(nFramesOS, 0.f);
+      std::memset(mMixBusOS.data(), 0, sizeof(float) * nFramesOS);
+      // Prime the downsamplers with silence
+      float dummy[2] = {0.f, 0.f};
+      for (int i = 0; i < 32; i++)
+      {
+        if (mOversample >= 4) {
+          float s2_0 = mMixDown2.process_sample(dummy);
+          float s2_1 = mMixDown2.process_sample(dummy);
+          float s1[2] = { s2_0, s2_1 };
+          (void)mMixDown1.process_sample(s1);
+        } else if (mOversample >= 2) {
+          (void)mMixDown1.process_sample(dummy);
+        }
+      }
+    }
   }
 
   void NoteOn(int note, int velocity)
@@ -615,9 +710,12 @@ public:
     void init(float fc, float sr) {
       // Clamp cutoff to 0.45 * Nyquist to keep tan() positive and stable.
       // At 48 kHz, 38 kHz exceeds Nyquist and tan() goes negative → NaN.
+      // NOTE: does NOT reset state. Callers that change fc/sr mid-stream
+      // should call reset() to avoid transients from mismatched state.
       float maxFc = sr * 0.45f;
       g = tanf(3.14159265f * std::min(fc, maxFc) / sr);
     }
+    void reset() { s = 0.f; }
     float process(float x) {
       float v = (x - s) * g / (1.f + g);
       float y = s + v;
@@ -692,6 +790,76 @@ public:
   float mScopeSyncPhase = 0.f;
   bool mScopeSyncSub = false;
   std::vector<T*> mModulations;
+
+  // ------------------------------------------------------------
+  // Oversampled mix bus. Voices upsample per-voice and accumulate at
+  // mOversample× rate. One shared decimator pair drops to base rate.
+  int mOversample = 4;  // 1, 2, or 4
+  std::vector<float> mMixBusOS;
+  kr106::Downsampler2x mMixDown1;  // Nx -> N/2 (used at 2x and 4x)
+  kr106::Downsampler2x mMixDown2;  // 2x -> 1x  (used at 4x only)
+
+  // Change the oversample factor (1, 2, or 4) at runtime.
+  //
+  // Clears the state of every resampler and the analog-BW filter so
+  // re-activating a previously-idle stage (e.g. going 2×→4× switches
+  // mOscUp2 and mMixDown2 back on with stale state) can't produce a
+  // click. Re-primes the mix-bus decimators with silence so the first
+  // non-zero sample through them doesn't cause a startup transient
+  // from the polyphase IIR's unloaded state.
+  //
+  // NOTE: the VCF's integrator states (mS[0..3]) are intentionally NOT
+  // cleared — held notes should continue to sound through the change,
+  // just with a different filter-pole placement. A mild spectral
+  // transient at the change point is inherent; a click from cleared
+  // resamplers would be worse.
+  //
+  // NOTE: Audio-thread only. This mutates Upsampler2x/Downsampler2x
+  // state arrays and the AnalogBW state non-atomically. JUCE routes
+  // parameter changes through processBlock's parameter sync, so calls
+  // originating from setValueNotifyingHost() arrive here on the audio
+  // thread — safe. Do NOT call directly from a UI callback, message
+  // thread, or any other non-audio context.
+  void SetOversample(int os)
+  {
+    os = (os <= 1) ? 1 : (os <= 2) ? 2 : 4;
+    if (os == mOversample) return;
+    mOversample = os;
+
+    ForEachVoice([os](kr106::Voice<T>& v) {
+      v.mOversample = os;
+      v.mVCF.SetOversample(os);
+      // Clear both upsamplers regardless of the new rate — any stage
+      // that becomes active (mOscUp1 for os>=2, mOscUp2 for os==4)
+      // needs to start from zero state.
+      v.mOscUp1.clear_buffers();
+      v.mOscUp2.clear_buffers();
+    });
+
+    // Analog BW: re-coefficient AND reset state. The new sr changes g,
+    // and feeding the old state through a filter with very different
+    // pole placement would transient audibly.
+    mAnalogBW.init(38000.f, mSampleRate * static_cast<float>(os));
+    mAnalogBW.reset();
+
+    // Mix-bus decimators: clear, then re-prime with silence so the
+    // polyphase IIR has a settled history before it sees real audio.
+    mMixDown1.clear_buffers();
+    mMixDown2.clear_buffers();
+    float dummy[2] = {0.f, 0.f};
+    for (int i = 0; i < 32; i++)
+    {
+      if (os >= 4) {
+        float s2_0 = mMixDown2.process_sample(dummy);
+        float s2_1 = mMixDown2.process_sample(dummy);
+        float s1[2] = { s2_0, s2_1 };
+        (void)mMixDown1.process_sample(s1);
+      } else if (os >= 2) {
+        (void)mMixDown1.process_sample(dummy);
+      }
+      // os == 1: no decimator runs at all, nothing to prime.
+    }
+  }
 
   void SetKeyTranspose(int semitones)
   {

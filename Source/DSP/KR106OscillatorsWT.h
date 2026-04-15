@@ -44,8 +44,13 @@ static constexpr float kSwitchRamp = 1.f / 64.f; // ~1.5ms at 44.1k
 //
 // With wavetable oscillators, oversampling is unnecessary for alias
 // suppression — the tables contain no energy above Nyquist by
-// construction. Oversampling may still be needed for the VCF's
-// nonlinear accuracy, but the oscillators themselves are clean at 1x.
+// construction.
+//
+// The oscillator runs at the base sample rate. Its output is upsampled
+// to 4× per-voice before feeding into the VCF (see Voice.h), and the
+// summed 4× mix bus is decimated once at the DSP level. This keeps
+// oscillator interpolation cost at baseline while still sharing the
+// mix-bus decimator across voices.
 
 namespace kr106 {
 
@@ -59,18 +64,31 @@ struct SawTables {
   static constexpr float kBaseFreq = 16.352f; // C0 in Hz
 
   float tables[kNumTables][kSize] = {};
-  float sampleRate = 44100.f;
+  float sampleRate = 44100.f; // the rate at which the osc will be READ
+                              // (4× base rate in the current architecture)
 
   // Generate all tables via additive synthesis.
+  //
+  //   sampleRate         — the rate at which the oscillator will be
+  //                        clocked. cps (cycles-per-sample) passed to
+  //                        Process() is implicitly relative to this.
+  //   bandlimitHz        — optional upper bound on harmonic content.
+  //                        If 0 (default), uses sampleRate * 0.5 (the
+  //                        read-rate Nyquist). Pass the base-rate
+  //                        Nyquist here when running the oscillator at
+  //                        an oversampled rate but decimating back to
+  //                        the base rate downstream — it prevents
+  //                        populating the tables with harmonics that
+  //                        the decimator would discard anyway.
+  //
   // Table t is safe for fundamentals up to kBaseFreq * 2^(t+1).
   // Each table contains a bandlimited saw: f(phase) ≈ 2*phase - 1,
-  // with harmonics truncated at Nyquist for that octave's ceiling.
+  // with harmonics truncated at bandlimitHz for that octave's ceiling.
   // Uses double precision accumulation to keep numerical error below
-  // -140 dB. Runs once at startup (~50ms at 44.1 kHz).
-  void Init(float sr) {
+  // -140 dB.
+  void Init(float sr, float bandlimitHz = 0.f) {
     sampleRate = sr;
-    float nyquist = sr * 0.5f;
-    InitSincKernel();
+    float nyquist = (bandlimitHz > 0.f) ? bandlimitHz : (sr * 0.5f);
 
     for (int t = 0; t < kNumTables; t++) {
       float freqBound = kBaseFreq * powf(2.f, static_cast<float>(t + 1));
@@ -88,75 +106,41 @@ struct SawTables {
 
   }
 
-  // 16-tap windowed sinc interpolation from a cyclic table.
-  // Uses a precomputed polyphase kernel (Blackman-Harris window).
-  // Provides near-perfect reconstruction up to table Nyquist,
-  // so all harmonics stored in the wavetable are faithfully reproduced
-  // regardless of the playback-to-table sample rate ratio.
-  static constexpr int kSincTaps = 16;       // taps (8 each side of center)
-  static constexpr int kSincHalf = kSincTaps / 2;
-  static constexpr int kSincPhases = 1024;   // fractional phase resolution
-  // Polyphase kernel: kSincPhases rows × kSincTaps columns.
-  // Initialized once by InitSincKernel().
-  static inline float sSincKernel[kSincPhases][kSincTaps] = {};
-  static inline bool sSincInit = false;
-
-  static void InitSincKernel()
-  {
-    if (sSincInit) return;
-    for (int p = 0; p < kSincPhases; p++)
-    {
-      float frac = static_cast<float>(p) / kSincPhases;
-      double sum = 0.0;
-      for (int t = 0; t < kSincTaps; t++)
-      {
-        // Tap position relative to the interpolation point.
-        // t=0 is the leftmost tap (kSincHalf-1 samples before center),
-        // t=kSincHalf-1 is one sample before center, t=kSincHalf is center.
-        double x = static_cast<double>(t - kSincHalf + 1) - static_cast<double>(frac);
-
-        // sinc(x)
-        double s;
-        if (fabs(x) < 1e-12)
-          s = 1.0;
-        else
-          s = sin(M_PI * x) / (M_PI * x);
-
-        // Blackman-Harris 4-term window (92 dB sidelobe rejection)
-        double n = static_cast<double>(t) + 1.0 - static_cast<double>(frac);
-        double wn = n / static_cast<double>(kSincTaps);
-        double w = 0.35875
-                 - 0.48829 * cos(2.0 * M_PI * wn)
-                 + 0.14128 * cos(4.0 * M_PI * wn)
-                 - 0.01168 * cos(6.0 * M_PI * wn);
-
-        double val = s * w;
-        sSincKernel[p][t] = static_cast<float>(val);
-        sum += val;
-      }
-      // Normalize so kernel sums to 1.0 (preserves DC gain)
-      float invSum = static_cast<float>(1.0 / sum);
-      for (int t = 0; t < kSincTaps; t++)
-        sSincKernel[p][t] *= invSum;
-    }
-    sSincInit = true;
-  }
-
-  // phase must be in [0, 1).
+  // 4-tap cubic Hermite (Catmull-Rom) interpolation from a cyclic table.
+  //
+  // Replaces a 16-tap windowed sinc. Why this is fine here:
+  //   - Tables are 4096 samples/cycle and bandlimited per octave. The
+  //     highest stored harmonic (octave 0) sits at ~0.17 × table Nyquist,
+  //     well inside the region where Hermite is flat (<0.1 dB error).
+  //     Higher octaves have fewer harmonics, so even more headroom.
+  //   - Kernel error energy lands at multiples of the effective table
+  //     rate (4096 × fundamental) — tens of kHz and up, filtered
+  //     downstream by the upsampler, VCF passband, and mix-bus decimator.
+  //
+  // Per-read cost: 4 loads + ~8 mults + ~7 adds. That's roughly 3×
+  // cheaper than the 16-tap sinc, and the polyphase kernel table
+  // (previously 64 KB of static storage) is gone too.
+  //
+  // If you ever need to A/B against the old sinc, it's recoverable
+  // from git history — same function signature.
   static float Read(const float* tbl, float phase) {
     float idx = phase * kSize;
     int i = static_cast<int>(idx);
-    float frac = idx - static_cast<float>(i);
+    float t = idx - static_cast<float>(i);
 
-    int p = static_cast<int>(frac * kSincPhases);
-    if (p >= kSincPhases) p = kSincPhases - 1;
-    const float* kernel = sSincKernel[p];
+    // 4 neighboring samples with cyclic wrap.
+    float y0 = tbl[(i - 1) & kMask];
+    float y1 = tbl[(i    ) & kMask];
+    float y2 = tbl[(i + 1) & kMask];
+    float y3 = tbl[(i + 2) & kMask];
 
-    float sum = 0.f;
-    int base = i - kSincHalf + 1;
-    for (int t = 0; t < kSincTaps; t++)
-      sum += tbl[(base + t) & kMask] * kernel[t];
-    return sum;
+    // Catmull-Rom cubic in Horner form. Passes through y1 at t=0 and
+    // y2 at t=1, with C¹ tangent continuity at sample boundaries.
+    float c0 = y1;
+    float c1 = 0.5f * (y2 - y0);
+    float c2 = y0 - 2.5f * y1 + 2.f * y2 - 0.5f * y3;
+    float c3 = 0.5f * (y3 - y0) + 1.5f * (y1 - y2);
+    return ((c3 * t + c2) * t + c1) * t + c0;
   }
 
   // Read with crossfade between two adjacent octave tables.
@@ -205,11 +189,40 @@ struct OscillatorsWT {
   // effect is below -100 dB so it doesn't meaningfully affect aliasing.
   // I think the curve we saw was a result of my Juno6 HPF never being fully off
   static constexpr float kSawCurve = 0.00f; // disabled curve
+  static constexpr bool  kSawCurveEnabled = (kSawCurve != 0.f);
+
+  // Gain threshold below which a waveform is considered silent and
+  // its sinc reads are skipped. 1e-4 = -80 dB, safely below audibility.
+  // The one-pole switch ramp still updates every sample so state stays
+  // consistent — only the table lookups + output accumulate are gated.
+  static constexpr float kGainEps = 1e-4f;
 
   const SawTables* mTables = nullptr;
 
+  // ----- Per-base-sample cached values (set by PrepareBlock) -----
+  // In the 4×-everywhere architecture the Voice calls PrepareBlock
+  // once per base sample with the current cps/pw/switch settings, then
+  // calls ProcessSample four times in an inner loop. Everything here
+  // is constant across those four inner calls, so we hoist all the
+  // per-sample derivations (log2f, OctaveToTable, effPW clamp, DC
+  // offset, on/off targets) out of the hot path.
+  float mCpsCached   = 0.f;
+  int   mSawTblIdx   = 0;
+  float mSawTblBlend = 0.f;
+  int   mSubTblIdx   = 0;
+  float mSubTblBlend = 0.f;
+  float mEffPW       = 0.5f;
+  float mPwDC        = 0.f;   // 2 * effPW - 1
+  float mSawTarget   = 1.f;   // target for mSawGain ramp
+  float mPulseTarget = 1.f;
+  float mSubTarget   = 0.f;
+  float mSubLevel    = 1.f;
+
   void SetTables(const SawTables* tables) { mTables = tables; }
 
+  // sampleRate here is the BASE rate (used for the waveform-switch
+  // crossfade time constant only — the actual clocking is determined
+  // by the cps passed to Process()).
   void Init(float sampleRate) {
     mSwitchRamp = 1.f - expf(-1.f / (0.00145f * sampleRate));
     Reset();
@@ -230,82 +243,124 @@ struct OscillatorsWT {
     return (std::exp(3.f * x) - 1.f) * kScale;
   }
 
-  // Process one sample.
-  // cps: frequency in cycles per sample (freqHz / sampleRate)
-  // pulseWidth: pulse width [0.52, 0.98] (caller scales from knob/LFO)
-  // sawOn, pulseOn, subOn: waveform enable switches
-  // subLevel: sub oscillator mix gain (pre-tapered via AudioTaper)
-  // noiseAmp: noise mix gain (pre-tapered via AudioTaper, 0 = off)
-  // sync: set true on phase wraparound (for scope sync output)
-  float Process(float cps, float pulseWidth, bool sawOn, bool pulseOn, bool subOn, float subLevel,
-                float noiseAmp, bool& sync) {
+  // ============================================================
+  // Control-rate preparation.
+  // ============================================================
+  // Call once per base sample. Computes the table indices, pulse-width
+  // intermediates, and on/off ramp targets — all values that are
+  // constant across the 4× inner loop.
+  //
+  // cps here is the OSC's per-sample phase increment. Normally this is
+  // freq / baseSampleRate (oscillator runs at 1× base rate) — the
+  // Voice then upsamples the oscillator output to 4× before the VCF.
+  void PrepareBlock(float cps, float pulseWidth,
+                    bool sawOn, bool pulseOn, bool subOn, float subLevel)
+  {
+    mCpsCached = cps;
 
-    // --- Phase accumulator (shared by all oscillators) ---
-    mPos += cps;
+    // Table selection: log2f + two OctaveToTable calls, hoisted from 4×.
+    float freq = cps * mTables->sampleRate;
+    float octave = log2f(std::max(freq, 1.f) / SawTables::kBaseFreq);
+    SawTables::OctaveToTable(octave,        mSawTblIdx, mSawTblBlend);
+    SawTables::OctaveToTable(octave - 1.f,  mSubTblIdx, mSubTblBlend);
+
+    // Pulse width: invert + clamp, then the -DC offset term.
+    float effPW = pulseWidth;
+    if (mPulseInvert) effPW = 1.f - effPW;
+    effPW = std::clamp(effPW, 0.01f, 0.99f);
+    mEffPW = effPW;
+    mPwDC  = 2.f * effPW - 1.f;
+
+    // Gain-ramp targets. The per-sample ramp itself stays in
+    // ProcessSample because it's state, but the target is constant.
+    mSawTarget   = sawOn   ? 1.f : 0.f;
+    mPulseTarget = pulseOn ? 1.f : 0.f;
+    mSubTarget   = subOn   ? 1.f : 0.f;
+    mSubLevel    = subLevel;
+  }
+
+  // ============================================================
+  // Audio-rate inner sample (4× per base sample in hybrid arch,
+  // or 1× if you're calling PrepareBlock + one ProcessSample).
+  // Uses values cached by the most recent PrepareBlock().
+  // ============================================================
+  // Forced inline — see comment on VCF::ProcessSample. The out-of-line
+  // body compiled to 344 lines of arm64 asm, which clang judged too
+  // expensive to inline at -O3 despite it being the hottest call site.
+  __attribute__((always_inline)) inline
+  float ProcessSample(bool& sync)
+  {
+    // --- Phase accumulator ---
+    mPos += mCpsCached;
     sync = false;
-
     if (mPos >= 1.f) {
       mPos -= 1.f;
       mSubState = !mSubState;
       sync = mSubState; // sync pulse every 2 DCO cycles (sub period)
     }
 
-    // --- Table selection (once per sample, shared by all waveforms) ---
-    // Saw and pulse use the same octave; sub is one octave lower.
-    float freq = cps * mTables->sampleRate;
-    float octave = log2f(std::max(freq, 1.f) / SawTables::kBaseFreq);
-    int sawTbl;
-    float sawBlend;
-    SawTables::OctaveToTable(octave, sawTbl, sawBlend);
+    // --- Gain ramps (always update; cheap and keeps state consistent) ---
+    mSawGain   += (mSawTarget   - mSawGain)   * mSwitchRamp;
+    mPulseGain += (mPulseTarget - mPulseGain) * mSwitchRamp;
+    mSubGain   += (mSubTarget   - mSubGain)   * mSwitchRamp;
 
-    int subTbl;
-    float subBlend;
-    SawTables::OctaveToTable(octave - 1.f, subTbl, subBlend);
+    // --- Activity flags: skip sinc reads for silent waveforms ---
+    // The target is included so that a freshly-enabled waveform starts
+    // computing immediately on the first sample of its ramp-up, even
+    // though mXGain is still near zero.
+    const bool sawActive   = (mSawGain   > kGainEps) || (mSawTarget   > 0.f);
+    const bool pulseActive = (mPulseGain > kGainEps) || (mPulseTarget > 0.f);
+    const bool subActive   = (mSubGain   > kGainEps) || (mSubTarget   > 0.f);
 
-    // --- Saw: curved phase + table lookup ---
-    // Phase curvature models the slight RC bow of the hardware capacitor
-    // ramp. Applied to the saw only; pulse/sub use linear phase.
-    float curvedPos = mPos * (1.f + kSawCurve * (1.f - mPos));
-    float saw = mTables->ReadBlended(curvedPos, sawTbl, sawBlend);
+    float out = 0.f;
 
-    // --- Pulse: saw(phase) - saw(phase - pw) ---
-    // Bandlimited by construction: difference of two bandlimited saws.
-    // The PW curvature correction maps the hardware comparator threshold
-    // (which sees the curved ramp) back to linear phase space.
-    float effPW = pulseWidth;
-    if (mPulseInvert) effPW = 1.f - effPW;
-    effPW = std::clamp(effPW, 0.01f, 0.99f);
+    // --- Saw / Pulse: share the ReadBlended(mPos) when both are needed ---
+    if (sawActive || pulseActive)
+    {
+      float sawAtPos = mTables->ReadBlended(mPos, mSawTblIdx, mSawTblBlend);
 
-  //  effPW = std::max(0.01f, std::min(effPW, 0.99f));
+      if (sawActive)
+      {
+        float saw;
+        if constexpr (kSawCurveEnabled) {
+          float curvedPos = mPos * (1.f + kSawCurve * (1.f - mPos));
+          saw = mTables->ReadBlended(curvedPos, mSawTblIdx, mSawTblBlend);
+        } else {
+          saw = sawAtPos;
+        }
+        out += saw * mSawAmp * mSawGain;
+      }
 
+      if (pulseActive)
+      {
+        // Pulse = saw(phase) - saw(phase - pw) - DC. Bandlimited by
+        // construction (difference of two bandlimited saws).
+        float pulseShift = mTables->ReadBlended(mPos - mEffPW, mSawTblIdx, mSawTblBlend);
+        float pulse = sawAtPos - pulseShift - mPwDC;
+        out += pulse * mPulseAmp * mPulseGain;
+      }
+    }
 
-    float pulse = mTables->ReadBlended(mPos, sawTbl, sawBlend)
-                - mTables->ReadBlended(mPos - effPW, sawTbl, sawBlend)
-                - (2.f * effPW - 1.f);
-
-    // --- Sub: half-frequency square wave from saw difference ---
-    // Derive a continuous sub phase from the saw phase and flip-flop state.
-    // subPhase goes 0→0.5 during the first saw cycle (sub=+1), then
-    // 0.5→1.0 during the second (sub=-1), forming one complete sub period.
-    // The saw-difference identity at pw=0.5 gives a bandlimited square.
-    float subPhase = (mPos + (mSubState ? 1.f : 0.f)) * 0.5f;
-    float sub = mTables->ReadBlended(subPhase - 0.5f, subTbl, subBlend)
-              - mTables->ReadBlended(subPhase, subTbl, subBlend);
-
-    // --- Oscillator mixing ---
-    mSawGain += ((sawOn ? 1.f : 0.f) - mSawGain) * mSwitchRamp;
-    mPulseGain += ((pulseOn ? 1.f : 0.f) - mPulseGain) * mSwitchRamp;
-    mSubGain += ((subOn ? 1.f : 0.f) - mSubGain) * mSwitchRamp;
-
-    float out = saw * mSawAmp * mSawGain + pulse * mPulseAmp * mPulseGain +
-                sub * mSubAmp * subLevel * mSubGain;
-
-    // Noise is now mixed at the voice level from a shared source
-    // (single generator for all voices, matching real hardware).
-    // noiseAmp parameter is retained for API compatibility but ignored here.
-    (void)noiseAmp;
+    // --- Sub: half-frequency square via saw-difference identity ---
+    if (subActive)
+    {
+      float subPhase = (mPos + (mSubState ? 1.f : 0.f)) * 0.5f;
+      float sub = mTables->ReadBlended(subPhase - 0.5f, mSubTblIdx, mSubTblBlend)
+                - mTables->ReadBlended(subPhase,        mSubTblIdx, mSubTblBlend);
+      out += sub * mSubAmp * mSubLevel * mSubGain;
+    }
 
     return out;
+  }
+
+  // Backward-compatible wrapper: one-shot Process with all args, no
+  // split. Useful for priming and for any caller that doesn't want
+  // to use the PrepareBlock / ProcessSample split.
+  float Process(float cps, float pulseWidth, bool sawOn, bool pulseOn, bool subOn, float subLevel,
+                float noiseAmp, bool& sync) {
+    (void)noiseAmp;
+    PrepareBlock(cps, pulseWidth, sawOn, pulseOn, subOn, subLevel);
+    return ProcessSample(sync);
   }
 };
 

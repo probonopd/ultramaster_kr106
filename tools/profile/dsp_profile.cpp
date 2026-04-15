@@ -92,124 +92,29 @@ int main(int argc, char* argv[])
     fprintf(stderr, "Duration: %.1f sec (%d blocks of %d)\n", seconds, totalBlocks, kBlockSize);
     fprintf(stderr, "\n");
 
-    // Initialize DSP
+    // Initialize DSP (VCF always runs at fixed 4x internally now)
     KR106DSP<float> dsp(6);
     dsp.Reset(sr, kBlockSize);
     loadPreset(dsp, absIdx);
-    // SetParam doesn't handle oversample; set directly on each voice's VCF
-    dsp.ForEachVoice([oversample](kr106::Voice<float>& v) {
-        v.mVCF.SetOversample(oversample);
-    });
 
     // Allocate output buffers
     std::vector<float> bufL(kBlockSize, 0.f);
     std::vector<float> bufR(kBlockSize, 0.f);
     float* outputs[2] = { bufL.data(), bufR.data() };
 
-    // Play a 6-voice chord: C3 E3 G3 C4 E4 G4
-    static constexpr int kChord[] = { 48, 52, 55, 60, 64, 67 };
-    for (int n : kChord)
-        dsp.NoteOn(n, 127);
-
-    // Warm up (1 second)
+    // Notes for 1-6 voice tests
+    static constexpr int kAllNotes[] = { 48, 52, 55, 60, 64, 67 };
     int warmupBlocks = static_cast<int>(sr / kBlockSize);
-    for (int b = 0; b < warmupBlocks; b++)
-    {
-        memset(bufL.data(), 0, kBlockSize * sizeof(float));
-        memset(bufR.data(), 0, kBlockSize * sizeof(float));
-        dsp.ProcessBlock(nullptr, outputs, 2, kBlockSize);
-    }
 
-    // === Profile: Full ProcessBlock ===
-    auto t0 = Clock::now();
-    for (int b = 0; b < totalBlocks; b++)
-    {
-        memset(bufL.data(), 0, kBlockSize * sizeof(float));
-        memset(bufR.data(), 0, kBlockSize * sizeof(float));
-        dsp.ProcessBlock(nullptr, outputs, 2, kBlockSize);
-    }
-    auto t1 = Clock::now();
-    double fullMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
-    double rtRatio = (seconds * 1000.0) / fullMs;
-
-    fprintf(stderr, "--- Full ProcessBlock ---\n");
-    fprintf(stderr, "  Wall time: %.1f ms for %.1f sec audio\n", fullMs, seconds);
-    fprintf(stderr, "  Real-time ratio: %.1fx\n", rtRatio);
-    fprintf(stderr, "  CPU usage: %.1f%%\n", 100.0 / rtRatio);
-    fprintf(stderr, "\n");
-
-    // === Profile: Voices only (no post-mix) ===
-    // Re-init to same state
-    dsp.Reset(sr, kBlockSize);
-    loadPreset(dsp, absIdx);
-    setParam(dsp, kSettingOversample, static_cast<float>(oversample));
-    for (int n : kChord)
-        dsp.NoteOn(n, 127);
-    for (int b = 0; b < warmupBlocks; b++)
-    {
-        memset(bufL.data(), 0, kBlockSize * sizeof(float));
-        memset(bufR.data(), 0, kBlockSize * sizeof(float));
-        dsp.ProcessBlock(nullptr, outputs, 2, kBlockSize);
-    }
-
-    // Time just the voice processing by running ProcessBlock but
-    // measuring a proxy: run with 0 voices vs 6 voices and subtract.
-    // First: 6 voices
-    auto tv0 = Clock::now();
-    for (int b = 0; b < totalBlocks; b++)
-    {
-        memset(bufL.data(), 0, kBlockSize * sizeof(float));
-        memset(bufR.data(), 0, kBlockSize * sizeof(float));
-        dsp.ProcessBlock(nullptr, outputs, 2, kBlockSize);
-    }
-    auto tv1 = Clock::now();
-    double voices6Ms = std::chrono::duration<double, std::milli>(tv1 - tv0).count();
-
-    // Now release all notes and measure with 0 active voices
-    for (int n : kChord)
-        dsp.NoteOff(n);
-    // Let voices die out
-    for (int b = 0; b < warmupBlocks * 2; b++)
-    {
-        memset(bufL.data(), 0, kBlockSize * sizeof(float));
-        memset(bufR.data(), 0, kBlockSize * sizeof(float));
-        dsp.ProcessBlock(nullptr, outputs, 2, kBlockSize);
-    }
-
-    auto tn0 = Clock::now();
-    for (int b = 0; b < totalBlocks; b++)
-    {
-        memset(bufL.data(), 0, kBlockSize * sizeof(float));
-        memset(bufR.data(), 0, kBlockSize * sizeof(float));
-        dsp.ProcessBlock(nullptr, outputs, 2, kBlockSize);
-    }
-    auto tn1 = Clock::now();
-    double voices0Ms = std::chrono::duration<double, std::milli>(tn1 - tn0).count();
-
-    double voiceCostMs = voices6Ms - voices0Ms;
-    double postMixMs = voices0Ms;
-    double perVoiceMs = voiceCostMs / 6.0;
-
-    fprintf(stderr, "--- Breakdown (6 voices vs 0 voices) ---\n");
-    fprintf(stderr, "  6 voices active:  %.1f ms\n", voices6Ms);
-    fprintf(stderr, "  0 voices active:  %.1f ms (post-mix only)\n", voices0Ms);
-    fprintf(stderr, "  Voice cost (6v):  %.1f ms (%.1f%%)\n", voiceCostMs, 100.0 * voiceCostMs / voices6Ms);
-    fprintf(stderr, "  Post-mix cost:    %.1f ms (%.1f%%)\n", postMixMs, 100.0 * postMixMs / voices6Ms);
-    fprintf(stderr, "  Per voice:        %.1f ms (%.1f%%)\n", perVoiceMs, 100.0 * perVoiceMs / voices6Ms);
-    fprintf(stderr, "\n");
-
-    // === Profile: Oversample comparison ===
-    // Run at 1x, 2x, 4x to isolate resampling cost
-    fprintf(stderr, "--- Oversample comparison ---\n");
-    for (int os : {1, 2, 4})
+    fprintf(stderr, "--- Voice count sweep ---\n");
+    for (int nVoices = 1; nVoices <= 6; nVoices++)
     {
         dsp.Reset(sr, kBlockSize);
         loadPreset(dsp, absIdx);
-        dsp.ForEachVoice([os](kr106::Voice<float>& v) {
-            v.mVCF.SetOversample(os);
-        });
-        for (int n : kChord)
-            dsp.NoteOn(n, 127);
+        for (int n = 0; n < nVoices; n++)
+            dsp.NoteOn(kAllNotes[n], 127);
+
+        // Warm up
         for (int b = 0; b < warmupBlocks; b++)
         {
             memset(bufL.data(), 0, kBlockSize * sizeof(float));
@@ -217,31 +122,43 @@ int main(int argc, char* argv[])
             dsp.ProcessBlock(nullptr, outputs, 2, kBlockSize);
         }
 
-        auto to0 = Clock::now();
+        auto t0 = Clock::now();
         for (int b = 0; b < totalBlocks; b++)
         {
             memset(bufL.data(), 0, kBlockSize * sizeof(float));
             memset(bufR.data(), 0, kBlockSize * sizeof(float));
             dsp.ProcessBlock(nullptr, outputs, 2, kBlockSize);
         }
-        auto to1 = Clock::now();
-        double osMs = std::chrono::duration<double, std::milli>(to1 - to0).count();
-        double osRt = (seconds * 1000.0) / osMs;
+        auto t1 = Clock::now();
+        double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+        double rt = (seconds * 1000.0) / ms;
 
-        fprintf(stderr, "  %dx oversample: %.1f ms (%.1fx RT, %.1f%% CPU)\n",
-                os, osMs, osRt, 100.0 / osRt);
+        fprintf(stderr, "  %d voice%s: %7.1f ms (%5.1fx RT, %5.1f%% CPU)\n",
+                nVoices, nVoices == 1 ? " " : "s", ms, rt, 100.0 / rt);
     }
-    fprintf(stderr, "\n");
 
-    // === Derived estimates ===
-    // VCF+resampling cost ≈ (4x time - 1x time) since at 1x there's no resampling
-    // and ProcessSample runs once vs 4 times
-    fprintf(stderr, "--- Summary ---\n");
-    fprintf(stderr, "  The difference between 4x and 1x includes:\n");
-    fprintf(stderr, "    - 3 extra ProcessSample calls per voice per sample\n");
-    fprintf(stderr, "    - All resampling filter operations (HIIR polyphase)\n");
-    fprintf(stderr, "  If we move to shared downsampling, we save the per-voice\n");
-    fprintf(stderr, "  resampling but keep all ProcessSample calls.\n");
+    // Also measure 0 voices (post-mix only) -- fresh DSP instance
+    {
+        KR106DSP<float> dsp0(6);
+        dsp0.Reset(sr, kBlockSize);
+        auto& dsp = dsp0;
+        for (int b = 0; b < warmupBlocks; b++)
+        {
+            memset(bufL.data(), 0, kBlockSize * sizeof(float));
+            memset(bufR.data(), 0, kBlockSize * sizeof(float));
+            dsp.ProcessBlock(nullptr, outputs, 2, kBlockSize);
+        }
+        auto t0 = Clock::now();
+        for (int b = 0; b < totalBlocks; b++)
+        {
+            memset(bufL.data(), 0, kBlockSize * sizeof(float));
+            memset(bufR.data(), 0, kBlockSize * sizeof(float));
+            dsp.ProcessBlock(nullptr, outputs, 2, kBlockSize);
+        }
+        auto t1 = Clock::now();
+        double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+        fprintf(stderr, "  0 voices: %7.1f ms (post-mix only)\n", ms);
+    }
 
     return 0;
 }
