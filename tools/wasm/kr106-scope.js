@@ -136,7 +136,7 @@ function drawScopeWaveform(ch){
 
   // Flat line when idle (matches plugin: green horizontal line at center)
   if(!scopeHasData||scopeDisplayLen<2){
-    ctx.strokeStyle='#00ff00';ctx.lineWidth=1;
+    ctx.strokeStyle='#00ff00';ctx.lineWidth=1.5;
     ctx.beginPath();ctx.moveTo(sx,sy+v2);ctx.lineTo(sx+w,sy+v2);ctx.stroke();
     return;
   }
@@ -646,7 +646,7 @@ let aboutFrame=0;
 
 function buildAboutPixels(w,h){
   // Rasterize text into pixel array
-  const lines=['ULTRAMASTER','KR-106','2.5.6','BUILD 04-14 19:24']; // version and build date updated by Makefile
+  const lines=['ULTRAMASTER','KR-106','2.5.6','BUILD 04-14 19:26']; // version and build date updated by Makefile
   const pixels=[];
   const lineH=10; // 7px glyph + 3px gap
   const totalH=lines.length*lineH;

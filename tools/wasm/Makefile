@@ -32,9 +32,11 @@ all: kr106_dsp.js version
 kr106_dsp.js: kr106_wasm.cpp $(wildcard $(DSP)/*.h) $(PRESETS)
 	$(EMCC) $(CXXFLAGS) $(EMFLAGS) -o kr106_dsp.js kr106_wasm.cpp
 
+BUILD_DATE := $(shell date +%m-%d\ %H:%M)
+
 version:
-	@sed -i '' "s/const lines=\['ULTRAMASTER','KR-106','[^']*'\]/const lines=['ULTRAMASTER','KR-106','$(VERSION)']/" $(SCOPE_JS)
-	@echo "Updated scope version to $(VERSION)"
+	@sed -i '' "s/const lines=\['ULTRAMASTER','KR-106','[^']*','BUILD [^']*'\]/const lines=['ULTRAMASTER','KR-106','$(VERSION)','BUILD $(BUILD_DATE)']/" $(SCOPE_JS)
+	@echo "Updated scope version to $(VERSION) build $(BUILD_DATE)"
 
 # Dev server for testing (requires python3)
 serve:

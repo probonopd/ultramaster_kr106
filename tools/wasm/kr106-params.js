@@ -60,7 +60,7 @@ function paramValueText(p,v){
   if(p===P.lfoDelay){const ms=_pv1('_kr106_lfo_delay_ms',v);return ms<=0?'Off':Math.round(ms)+' ms'}
   if(p===P.vcaLevel){const dB=_pv1('_kr106_vca_level_db',v);return(dB>=0?'+':'')+dB.toFixed(1)+' dB'}
   if(p===P.masterVol){const dB=_pv1('_kr106_master_vol_db',v);return dB<=-200?'-inf dB':(dB>=0?'+':'')+dB.toFixed(1)+' dB'}
-  if(p===P.tuning){const c=Math.round(_pv1('_kr106_tuning_cents',v));return(c>=0?'+':'')+c+' cents'}
+  if(p===P.tuning){const c=Math.round(_pv1('_kr106_tuning_cents',v*2-1));return(c>=0?'+':'')+c+' cents'}
   if(p===P.arpRate)return Math.round(_pv1('_kr106_arp_rate_bpm',v))+' bpm'
   if(p===P.envA)return fmtMs(_pv('_kr106_attack_ms',v,j6))
   if(p===P.envD||p===P.envR)return fmtMs(_pv('_kr106_dec_rel_ms',v,j6))

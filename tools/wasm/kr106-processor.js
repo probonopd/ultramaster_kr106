@@ -21,7 +21,7 @@ class KR106Processor extends AudioWorkletProcessor {
 
   onMessage(msg) {
     if (msg.type === 'init') {
-      this.initWasm(msg.wasmUrl);
+      this.initWasm(msg.wasmText, msg.wasmBinary);
       return;
     }
     if (!this.ready) return;
@@ -35,18 +35,29 @@ class KR106Processor extends AudioWorkletProcessor {
         this.mod._kr106_note_off(this.dsp, d[1]);
       else if (st === 0xB0)
         this.mod._kr106_control_change(this.dsp, d[1], d[2] / 127);
+    } else if (msg.type === 'bankOffset') {
+      if (this.mod._kr106_set_bank_offset) this.mod._kr106_set_bank_offset(msg.value);
     } else if (msg.type === 'param') {
-      if (msg.index === -1) {
-        // Special: bank offset
-        if (this.mod._kr106_set_bank_offset) this.mod._kr106_set_bank_offset(msg.value);
-      } else {
-        this.mod._kr106_set_param(this.dsp, msg.index, msg.value);
+      this.mod._kr106_set_param(this.dsp, msg.index, msg.value);
+      // Model switch: send back remapped VCF/HPF slider positions
+      if (msg.index === 43) { // kAdsrMode
+        const vcf = this.mod._kr106_get_vcf_slider(this.dsp);
+        const hpf = this.mod._kr106_get_hpf_slider(this.dsp);
+        this.port.postMessage({ type: 'sliderUpdate', vcfSlider: vcf, hpfSlider: hpf });
       }
     } else if (msg.type === 'preset') {
       this.mod._kr106_load_preset(this.dsp, msg.index);
       const namePtr = this.mod._kr106_get_preset_name(msg.index);
       const name = this.mod.UTF8ToString(namePtr);
       this.port.postMessage({ type: 'presetName', index: msg.index, name });
+      // Send back all 44 preset parameter values for UI sync
+      const vals = new Float32Array(44);
+      for (let i = 0; i < 44; i++)
+        vals[i] = this.mod._kr106_get_preset_value(msg.index, i);
+      // Also send remapped VCF/HPF slider positions
+      const vcfSlider = this.mod._kr106_get_vcf_slider(this.dsp);
+      const hpfSlider = this.mod._kr106_get_hpf_slider(this.dsp);
+      this.port.postMessage({ type: 'presetValues', index: msg.index, values: vals, vcfSlider, hpfSlider });
     } else if (msg.type === 'preset-name-query') {
       const namePtr = this.mod._kr106_get_preset_name(msg.index);
       const name = this.mod.UTF8ToString(namePtr);
@@ -58,10 +69,12 @@ class KR106Processor extends AudioWorkletProcessor {
     }
   }
 
-  async initWasm(wasmUrl) {
+  async initWasm(wasmText, wasmBinary) {
     try {
-      importScripts(wasmUrl);
-      this.mod = await createKR106();
+      // AudioWorklet has no importScripts() or fetch().
+      // Main thread fetches both the glue JS and .wasm binary, sends via postMessage.
+      (0, eval)(wasmText); // indirect eval in global scope defines createKR106
+      this.mod = await createKR106({ wasmBinary: wasmBinary });
       this.dsp = this.mod._kr106_create(sampleRate);
       this.ready = true;
       this.port.postMessage({ type: 'ready' });

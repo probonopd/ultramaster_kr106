@@ -26,7 +26,8 @@ const controls=[
 [P.bender,'bender',66,200],
 [P.transpose,'btnled',95,43,1],[P.hold,'btnled',122,43,1],[P.arpeggio,'btnled',154,43,1],
 [P.dcoPulse,'btnled',377,43,1],[P.dcoSaw,'btnled',393,43,1],[P.dcoSubSw,'btnled',409,43,2],
-[P.chorusI,'btnled',751,43,1],[P.chorusII,'btnled',767,43,2]];
+[P.chorusI,'btnled',751,43,1],[P.chorusII,'btnled',767,43,2],
+[-1,'gear',751,75]];
 
 function ctrlBounds(c){const[,t,x,y,e]=c;
 if(t==='slider')return{x,y,w:19+(e||0),h:49};if(t==='switch3'||t==='switch2')return{x,y,w:9,h:24};
@@ -110,7 +111,7 @@ function KBe(o,y,p){_f(K3,o+4,y,o+20,y+107);_v(K0,o,y,y+108);_p(K0,o+1,y+106);_v
 const KB={x:129,y:106,w:792,h:114,minNote:36,numKeys:61};
 const kbKeys=new Uint8Array(61);
 
-function drawKeyboard(){const ox=KB.x,oy=KB.y+5;ctx.fillStyle=K3;ctx.fillRect(ox,oy,792,108);
+function drawKeyboard(){const ox=KB.x,oy=KB.y+5;ctx.fillStyle=K3;ctx.fillRect(ox,oy,792,107);
 for(let oc=0;oc<5;oc++){const x=ox+oc*154,k=oc*12;KBl(x,oy,kbKeys[k]);KBk(x+13,oy,kbKeys[k+1]);KB1(x+22,oy,kbKeys[k+2]);KBk(x+40,oy,kbKeys[k+3]);KBr(x+44,oy,kbKeys[k+4]);KBl(x+66,oy,kbKeys[k+5]);KBk(x+79,oy,kbKeys[k+6]);KB2(x+88,oy,kbKeys[k+7]);KBk(x+103,oy,kbKeys[k+8]);KB3(x+110,oy,kbKeys[k+9]);KBk(x+128,oy,kbKeys[k+10]);KBr(x+132,oy,kbKeys[k+11])}KBe(ox+770,oy,kbKeys[60]);
 // Transpose chevron in 5px strip above keys
 if(typeof transposeKey!=='undefined'&&transposeKey>=0){
@@ -123,31 +124,28 @@ if(typeof transposeKey!=='undefined'&&transposeKey>=0){
 
 function drawPresetDisplay(){ctx.fillStyle='#000';ctx.fillRect(790,86,128,14);ctx.save();ctx.beginPath();ctx.rect(790,86,128,14);ctx.clip();ctx.fillStyle='#0dc000';ctx.font="11px 'Segment14', monospace";const name=!synth.ready?'Loading...':presetDirty?'Manual':synth.getPresetName(currentPreset);ctx.fillText(name,793,97);ctx.restore()}
 
+// Pre-parsed SVG gear path from plugin (Tabler Icons, 24x24 viewBox)
+const _gearPath=new Path2D('M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065');
+const _gearCircle=new Path2D('M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0');
+
 function drawGear(x,y,hover){
-  const cx=x+9,cy=y+9,or_=7,ir=4.5,tw=2.2,n=8;
-  ctx.save();ctx.translate(cx,cy);
-  // Teeth
-  ctx.beginPath();
-  for(let i=0;i<n;i++){
-    const a=i*Math.PI*2/n-Math.PI/2;
-    const ha=Math.PI/n*0.45;
-    ctx.lineTo(Math.cos(a-ha)*or_,Math.sin(a-ha)*or_);
-    ctx.lineTo(Math.cos(a-ha*0.6)*(or_+tw),Math.sin(a-ha*0.6)*(or_+tw));
-    ctx.lineTo(Math.cos(a+ha*0.6)*(or_+tw),Math.sin(a+ha*0.6)*(or_+tw));
-    ctx.lineTo(Math.cos(a+ha)*or_,Math.sin(a+ha)*or_)}
-  ctx.closePath();ctx.fillStyle=hover?'#00ff00':'#808080';ctx.fill();
-  // Center hole
-  ctx.beginPath();ctx.arc(0,0,ir,0,Math.PI*2);ctx.fillStyle=hover?'#004000':'#404040';ctx.fill();
-  ctx.beginPath();ctx.arc(0,0,ir-1.5,0,Math.PI*2);ctx.fillStyle=hover?'#002000':'#222';ctx.fill();
+  const s=18/24;
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.scale(s,s);
+  ctx.strokeStyle=hover?'#00ff00':'#808080';
+  ctx.lineWidth=1.5/s;
+  ctx.lineCap='round';ctx.lineJoin='round';
+  ctx.stroke(_gearPath);
+  ctx.stroke(_gearCircle);
   ctx.restore()}
 
 // Settings menu state (shared with kr106-ui.js)
 let menuOpen=false,menuHover=-1;
 const menuItems=[
-  {type:'label',text:'Voices'},
-  {type:'radio',text:'06',group:'voices',val:6},
-  {type:'radio',text:'08',group:'voices',val:8},
-  {type:'radio',text:'10',group:'voices',val:10},
+  {type:'radio',text:'06 Voices',group:'voices',val:6},
+  {type:'radio',text:'08 Voices',group:'voices',val:8},
+  {type:'radio',text:'10 Voices',group:'voices',val:10},
   {type:'sep'},
   {type:'check',text:'Ignore MIDI Velocity',key:'ignoreVel'},
   {type:'check',text:'Enable MIDI Input',key:'midiEnabled'},
@@ -156,7 +154,7 @@ let menuSettings={voices:6,ignoreVel:true,midiEnabled:false};
 
 function drawSettingsMenu(){
   ctx.save();ctx.scale(S,S);
-  const mw=180,mh=menuItems.length*14+8;
+  const mw=180,mh=menuItems.length*14;
   const mx=Math.round((W-mw)/2),my=Math.round((H-mh)/2);
   // Background
   ctx.fillStyle='#000';ctx.fillRect(mx,my,mw,mh);
@@ -165,22 +163,15 @@ function drawSettingsMenu(){
   ctx.font="11px 'Segment14', monospace";
   for(let i=0;i<menuItems.length;i++){
     const it=menuItems[i];
-    const iy=my+4+i*14,iw=mw-8,ix=mx+4;
-    if(it.type==='sep'){ctx.fillStyle='#004000';ctx.fillRect(ix,iy+6,iw,1);continue}
-    if(it.type==='label'){ctx.fillStyle='#008000';ctx.fillText(it.text,ix+2,iy+11);continue}
+    const iy=my+i*14;
+    if(it.type==='sep'){ctx.fillStyle='#004000';ctx.fillRect(mx+1,iy+6,mw-2,1);continue}
+    if(it.type==='label'){ctx.fillStyle='#008000';ctx.fillText(it.text,mx+6,iy+11);continue}
     const hov=i===menuHover;
     let active=false;
     if(it.type==='radio')active=(menuSettings[it.group]===it.val);
     else if(it.type==='check')active=!!menuSettings[it.key];
-    if(active){
-      ctx.fillStyle='#00ff00';ctx.fillRect(ix,iy,iw,14);
-      ctx.fillStyle='#000'}
-    else{
-      if(hov){ctx.fillStyle='#003c00';ctx.fillRect(ix,iy,iw,14)}
-      ctx.fillStyle='#00ff00'}
-    const prefix=it.type==='check'?(active?'[x] ':'[ ] '):(active?'> ':'  ');
-    ctx.fillText(prefix+it.text,ix+2,iy+11)}
-  // Close hint
-  ctx.fillStyle='#006400';ctx.font="9px 'Segment14', monospace";
-  ctx.fillText('ESC to close',mx+mw-72,my+mh-2);
+    if(hov){ctx.fillStyle='#003c00';ctx.fillRect(mx+1,iy,mw-2,14)}
+    ctx.fillStyle='#00ff00';
+    const prefix=active?'* ':'  ';
+    ctx.fillText(prefix+it.text,mx+6,iy+11)}
   ctx.restore()}
