@@ -176,7 +176,7 @@ namespace analog_noise {
   // Wet path — chorus-on only, injected inside Chorus::Process.
   // Wet broadband baseline plus a high shelf at 5 kHz reproduces the
   // hardware HF tilt (+21 dB midband, +33 dB HF over dry).
-  constexpr float kWetBroadbandGain = 3.3e-4f;
+  constexpr float kWetBroadbandGain = 1.2e-4f;
   constexpr float kWetShelfCornerHz = 5000.f;
   constexpr float kWetShelfBoostDb  = 15.f;
   

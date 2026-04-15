@@ -101,7 +101,7 @@ static bool sParamToSysExInit = []() {
 
 // Switch params packed into SysEx 0x10
 static constexpr int kSw1Params[] = {
-  kOctTranspose, kDcoPulse, kDcoSaw, kChorusOff, kChorusI
+  kOctTranspose, kDcoPulse, kDcoSaw, kChorusOff, kChorusI, kChorusII
 };
 // Switch params packed into SysEx 0x11
 static constexpr int kSw2Params[] = {
