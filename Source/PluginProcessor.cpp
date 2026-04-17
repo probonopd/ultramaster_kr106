@@ -1302,6 +1302,11 @@ void KR106AudioProcessor::getStateInformation(juce::MemoryBlock& destData)
   stream.writeInt(0x4B523130); // 'KR10' magic
   stream.writeFloat(mUIScale);
   // Voice count, velocity, arp limit etc. are now params (kSetting*) — saved above
+
+  // v2.5.8: preset index and scope page
+  stream.writeInt(0x4B523238); // 'KR28' magic
+  stream.writeInt(mCurrentPreset);
+  stream.writeInt(mScopePage);
 }
 
 void KR106AudioProcessor::setStateInformation(const void* data, int sizeInBytes)
@@ -1339,36 +1344,47 @@ void KR106AudioProcessor::setStateInformation(const void* data, int sizeInBytes)
   if (!stream.isExhausted() && stream.readInt() == 0x4B523130)
   {
     (void)stream.readFloat(); // consume stateScale (settings.json is authoritative for zoom)
-    // Old state format stored voice count, velocity, arp limit here.
-    // New format stores them as params (kSetting*), already restored above.
-    // Consume leftover bytes from old format so we don't misparse.
+
+    // Check for v2.5.8+ format (KR28 magic follows immediately).
+    // Old states stored legacy voice/velocity/arp fields here instead.
     if (!stream.isExhausted())
     {
-      int oldVoices = stream.readInt();
-      // If settings params were at default (old state predates kSetting*),
-      // apply the legacy values
-      if (numParams < kSettingVoices + 1)
+      auto pos = stream.getPosition();
+      int nextMagic = stream.readInt();
+      if (nextMagic == 0x4B523238)
       {
-        mVoiceCount = oldVoices;
-        mDSP.SetActiveVoices(mVoiceCount);
+        // v2.5.8+: preset index and scope page
+        if (!stream.isExhausted()) mCurrentPreset = stream.readInt();
+        if (!stream.isExhausted()) mScopePage = stream.readInt();
       }
-    }
-    if (!stream.isExhausted())
-    {
-      bool oldIgnVel = stream.readBool();
-      if (numParams < kSettingIgnoreVel + 1)
+      else
       {
-        mIgnoreVelocity = oldIgnVel;
-        mDSP.mIgnoreVelocity = mIgnoreVelocity;
-      }
-    }
-    if (!stream.isExhausted())
-    {
-      bool oldArpLimit = stream.readBool();
-      if (numParams < kSettingArpLimitKbd + 1)
-      {
-        mArpLimitKbd = oldArpLimit;
-        mDSP.mArp.mLimitToKeyboard = mArpLimitKbd;
+        // Pre-2.5.8: legacy fields (voice count, velocity, arp limit)
+        stream.setPosition(pos); // rewind — nextMagic was actually oldVoices
+        int oldVoices = stream.readInt();
+        if (numParams < kSettingVoices + 1)
+        {
+          mVoiceCount = oldVoices;
+          mDSP.SetActiveVoices(mVoiceCount);
+        }
+        if (!stream.isExhausted())
+        {
+          bool oldIgnVel = stream.readBool();
+          if (numParams < kSettingIgnoreVel + 1)
+          {
+            mIgnoreVelocity = oldIgnVel;
+            mDSP.mIgnoreVelocity = mIgnoreVelocity;
+          }
+        }
+        if (!stream.isExhausted())
+        {
+          bool oldArpLimit = stream.readBool();
+          if (numParams < kSettingArpLimitKbd + 1)
+          {
+            mArpLimitKbd = oldArpLimit;
+            mDSP.mArp.mLimitToKeyboard = mArpLimitKbd;
+          }
+        }
       }
     }
   }

@@ -215,6 +215,8 @@ struct VCF
   // res: resonance amount [0, 1]
   void UpdateCoeffs(float frq, float res)
   {
+    // Compute cutoff Hz before clamping frq (needed for hzFade below)
+    float cutoffHz = frq * mSampleRate * 0.5f;
     frq = std::min(frq, 0.95f);
 
     // ---- Cache the parameter-derived terms ----
@@ -231,20 +233,22 @@ struct VCF
 
       // Tame resonance at ultrasonic cutoff. The peak itself is inaudible
       // but its skirt aliases back into the audible range.
-      // frqFadeStart should be 20 kHz at 1×, 40 kHz at 2×, 80 kHz at 4×
-      // i.e. always ~80% of the effective Nyquist
-      float frqFadeStart = static_cast<float>(mOversample) * 0.8f;
+      // Fade resonance from 80% to 95% of the effective Nyquist
+      float os = static_cast<float>(mOversample);
+      float frqFadeStart = os * 0.8f;
+      float frqFadeEnd   = os * 0.95f;
 
       if (frq > frqFadeStart)
       {
-        float fade = std::max(1.f - (frq - frqFadeStart) / (0.95f - frqFadeStart), 0.f);
+        float fade = std::max(1.f - (frq - frqFadeStart) / (frqFadeEnd - frqFadeStart), 0.f);
         k *= fade;
       }
 
       // Hardware self-oscillation fades above ~30 kHz due to OTA bandwidth.
       // (From osc_calibrate: HW self-osc drops 3 dB at byte 114 (~32 kHz),
       //  gone at byte 127.)
-      float cutoffHz = frq * mSampleRate * 0.5f;
+      // cutoffHz is computed from the unclamped frq (before the 0.95 clamp)
+      // so the fade works correctly at all sample rates.
       float hzFade = 1.f - std::clamp((cutoffHz - 25000.f) / 10000.f, 0.f, 1.f);
       k *= hzFade;
 

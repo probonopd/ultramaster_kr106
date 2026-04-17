@@ -66,6 +66,8 @@ public:
         : mProcessor(processor)
     {
         setMouseCursor(juce::MouseCursor::PointingHandCursor);
+        if (mProcessor)
+            mScaleIdx = mProcessor->mScopePage;
     }
 
     void mouseMove(const juce::MouseEvent& e) override
@@ -338,6 +340,7 @@ public:
         int n = kNumModes;
         int next = ((mScaleIdx + delta) % n + n) % n;
         mScaleIdx = next;
+        if (mProcessor) mProcessor->mScopePage = mScaleIdx;
         repaint();
     }
 
@@ -354,6 +357,7 @@ public:
             mScaleIdx = 4;
         }
         mAboutActive = false;
+        if (mProcessor) mProcessor->mScopePage = mScaleIdx;
         repaint();
     }
 

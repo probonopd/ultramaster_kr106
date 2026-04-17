@@ -110,6 +110,9 @@ public:
   // Clip indicator: peak level before saturator (audio writes, UI reads)
   std::atomic<float> mPeakLevel{0.f};
 
+  // Scope page (UI reads/writes, saved in DAW state)
+  int mScopePage = 0;  // 0-5: waveform, spectrum, ADSR, VCF, patch bank, about
+
   // Scope ring buffer (audio writes, UI reads via timer)
   static constexpr int kScopeRingSize = 4096;
   float mScopeRing[kScopeRingSize] = {};    // L channel
