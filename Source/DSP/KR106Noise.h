@@ -3,55 +3,79 @@
 #include <cmath>
 #include <cstdint>
 
-// Shared noise generator modeled on the Juno-6/106 noise source.
+// Shared noise generator modeled on the Juno-106 noise source circuit.
 //
-// Single 2SC945 NZ transistor in avalanche mode, shared across all voices
-// via the mixer bus. White noise approximated by 4-sample CLT (sum of
-// uniform randoms), then filtered:
+// Circuit path (from service manual):
+//   2SC945 (B,C=GND, E=noise) → 470K to +15V → 1µF cap → 4.7K to GND →
+//   BA662 (-IN) → BA662 output → 100pF to GND + 300K to GND →
+//   NPN buffer (C=+15V, E=10K to -15V) → 10µF cap → 47K to GND → output
 //
-//   2x LPF ~12.6 kHz  (C9/R65 BA662 feedback + OTA/transistor bandwidth)
-//   HPF ~67 Hz         (C11/R67 + C10/R70 coupling, effective single pole)
+// Poles derived from component values:
+//   LPF:  100pF × 300K = 5305 Hz  (parallel RC load on BA662 current output)
+//   HPF:  1µF × 4.7K = 34 Hz      (input coupling cap into BA662 termination)
 //
-// Calibrated against Juno-6 hardware recording at 96 kHz.
-// Fit: 0.55 dB RMS error, 25 Hz-44 kHz.
+// Flicker (1/f) tilt: decade-spaced EMA bank fed the same white source.
+// Sample-rate independent; all corners from exp(-2π·fc/sr).
 //
-// Uses EMA (exponential moving average) filters instead of TPT. Unlike
-// the bilinear transform, EMA has no frequency compression at Nyquist,
-// so the spectral shape is consistent across sample rates. A small
-// correction to the LPF cutoff compensates for the EMA's HF excess:
-//   fc_corrected = fc * (1 - 2.2 * (fc / sr)^2)
-// This converges to the true analog value at high sample rates.
+// Popcorn/microplasma: two random telegraph processes mixed in at low
+// amplitude. Emulates the burst-noise character of 2SC945 in reverse
+// breakdown. Mean dwell times are set in seconds and converted to
+// per-sample flip probabilities, so behavior is sample-rate independent.
+//
+// White noise approximated by 4-sample CLT (sum of uniform randoms).
 
 namespace kr106 {
 
 struct Noise
 {
   uint32_t mSeed = 22222;
-  float mLP1State = 0.f;
-  float mLP2State = 0.f;
+
+  // Main circuit filters
+  float mLPState = 0.f;
   float mHPState = 0.f;
-  float mLPA = 0.f;  // EMA coefficient for LP poles (exp decay)
-  float mHPA = 0.f;  // EMA coefficient for HP
+  float mLPA = 0.f;
+  float mHPA = 0.f;
+
+  // Flicker (1/f) tilt bank
+  static constexpr int kFlickerStages = 4;
+  float mFlickerState[kFlickerStages] = {0};
+  float mFlickerA[kFlickerStages] = {0};
+  static constexpr float kFlickerFreqs[kFlickerStages] =
+    { 30.f, 300.f, 3000.f, 15000.f };
+  static constexpr float kFlickerMix = 1.5f;
+
+  // Fast random in [0,1) using the same LCG
+  float NextUniform()
+  {
+    mSeed = mSeed * 196314165u + 907633515u;
+    return mSeed / static_cast<float>(0xFFFFFFFFu);
+  }
 
   void SetSampleRate(float sampleRate)
   {
-    constexpr float kLPFreq = 12600.f;  // BA662 feedback + OTA bandwidth
-    constexpr float kHPFreq = 67.f;     // C11/R67 + C10/R70 effective
+    constexpr float kLPFreq = 5305.f;
+    constexpr float kHPFreq = 34.f;
 
-    // Correct LPF cutoff for EMA's high-frequency excess
     float r = kLPFreq / sampleRate;
     float fcLP = kLPFreq * (1.f - 2.2f * r * r);
 
     mLPA = expf(-2.f * static_cast<float>(M_PI) * fcLP / sampleRate);
     mHPA = expf(-2.f * static_cast<float>(M_PI) * kHPFreq / sampleRate);
-    mLP1State = 0.f;
-    mLP2State = 0.f;
+    mLPState = 0.f;
     mHPState = 0.f;
+
+    // Flicker bank
+    for (int i = 0; i < kFlickerStages; i++)
+    {
+      mFlickerA[i] = expf(-2.f * static_cast<float>(M_PI)
+                          * kFlickerFreqs[i] / sampleRate);
+      mFlickerState[i] = 0.f;
+    }
   }
 
   float Process()
   {
-    // 4-sample CLT: sum of uniform randoms approximates Gaussian
+    // 4-sample CLT white noise
     float g = 0.f;
     for (int j = 0; j < 4; j++)
     {
@@ -60,16 +84,24 @@ struct Noise
     }
     float white = g * 0.5f;
 
-    // LPF pole 1 (C9/R65 BA662 feedback)
-    mLP1State = mLPA * mLP1State + (1.f - mLPA) * white;
+    // Flicker bank: decade-spaced LPFs summed, fed from white
+    float flicker = 0.f;
+    for (int i = 0; i < kFlickerStages; i++)
+    {
+      mFlickerState[i] = mFlickerA[i] * mFlickerState[i]
+                       + (1.f - mFlickerA[i]) * white;
+      flicker += mFlickerState[i];
+    }
+    flicker *= (1.f / kFlickerStages);
 
-    // LPF pole 2 (BA662 OTA / TR15/TR14 bandwidth)
-    mLP2State = mLPA * mLP2State + (1.f - mLPA) * mLP1State;
+    // Combine: white carrier + flicker tilt
+    float shaped = white + kFlickerMix * flicker;
 
-    // HPF ~67 Hz (C11/R67 + C10/R70 coupling)
-    mHPState = mHPA * mHPState + (1.f - mHPA) * mLP2State;
+    // Circuit filters
+    mLPState = mLPA * mLPState + (1.f - mLPA) * shaped;
+    mHPState = mHPA * mHPState + (1.f - mHPA) * mLPState;
 
-    return mLP2State - mHPState;
+    return mLPState - mHPState;
   }
 };
 
