@@ -425,7 +425,7 @@ KR106AudioProcessor::KR106AudioProcessor()
       if (v == 6 || v == 8 || v == 10) return juce::String(v);
       return juce::String(6); // snap to nearest valid
     });
-  addSwitch(kSettingOversample,  "VCF Oversample",     4, 1, 4,
+  addSwitch(kSettingOversample,  "VCF Oversample",     2, 1, 4,
     [](int v, int) { return v <= 1 ? juce::String("Off") : juce::String(v) + "x"; });
   addBool(kSettingIgnoreVel,     "Ignore Velocity",    true);
   addBool(kSettingArpLimitKbd,   "Arp Limit Kbd",      true);
@@ -437,6 +437,8 @@ KR106AudioProcessor::KR106AudioProcessor()
     [](int v, int) { return juce::String(kr106::kDivNames[v]); });
   addSwitch(kLfoQuantize,        "LFO Quantize",       kr106::kLfoDiv4, 0, kr106::kNumLfoDivisions - 1,
     [](int v, int) { return juce::String(kr106::kLfoDivNames[v]); });
+  addSwitch(kSettingOscMode,     "Oscillator Mode",    1, 0, 1,
+    [](int v, int) { return v == 0 ? juce::String("Wavetable") : juce::String("PolyBLEP"); });
 
   // Build factory presets from compiled-in data (raw 7-bit integer values)
   constexpr int kFactoryValues = sizeof(KR106FactoryPreset::values) / sizeof(int);
@@ -1224,6 +1226,11 @@ void KR106AudioProcessor::parameterChanged(int paramIdx, float newValue)
   {
     mMidiOutSysEx = newValue > 0.5f;
   }
+  else if (paramIdx == kSettingOscMode)
+  {
+    int mode = juce::roundToInt(newValue);
+    mDSP.ForEachVoice([mode](kr106::Voice<float>& v) { v.mOscMode = mode; });
+  }
   else
   {
     if (paramIdx == kHold)
@@ -1563,7 +1570,7 @@ void KR106AudioProcessor::loadGlobalSettings()
     if (p) p->setValueNotifyingHost(p->convertTo0to1(val));
   };
   setParamFromSetting(kSettingVoices,      static_cast<float>((int)KR106PresetManager::getSetting("voiceCount", 6)));
-  { int os = (int)KR106PresetManager::getSetting("vcfOversample", 4);
+  { int os = (int)KR106PresetManager::getSetting("vcfOversample", 2);
     setParamFromSetting(kSettingOversample, static_cast<float>(os <= 1 ? 1 : os <= 3 ? 2 : 4)); }
   setParamFromSetting(kSettingIgnoreVel,   (bool)KR106PresetManager::getSetting("ignoreVelocity", true)  ? 1.f : 0.f);
   setParamFromSetting(kSettingArpLimitKbd, (bool)KR106PresetManager::getSetting("arpLimitKbd", true)     ? 1.f : 0.f);
@@ -1571,6 +1578,7 @@ void KR106AudioProcessor::loadGlobalSettings()
   setParamFromSetting(kSettingLfoSync,     (bool)KR106PresetManager::getSetting("lfoSyncHost", false)    ? 1.f : 0.f);
   setParamFromSetting(kSettingMonoRetrig,  (bool)KR106PresetManager::getSetting("monoRetrigger", true)   ? 1.f : 0.f);
   setParamFromSetting(kSettingMidiSysEx,   (bool)KR106PresetManager::getSetting("midiOutSysEx", false)   ? 1.f : 0.f);
+  setParamFromSetting(kSettingOscMode,     static_cast<float>((int)KR106PresetManager::getSetting("oscMode", 1)));
 
   // Load MIDI learn CC map (param→CC, multiple params can share a CC)
   auto ccMap = KR106PresetManager::getSetting("midiLearnMap");
@@ -1596,20 +1604,79 @@ void KR106AudioProcessor::loadGlobalSettings()
       for (int p = 0; p < 6 && idx < arr->size(); p++, idx++)
         mDSP.GetVoice(v)->SetVariance(p, static_cast<float>((double)(*arr)[idx]));
   }
+
+  // Load noise/drive levels (variance editor)
+  auto analogMul = KR106PresetManager::getSetting("analogNoiseMul");
+  if (!analogMul.isVoid())
+  {
+    float a = static_cast<float>((double)analogMul);
+    mDSP.mNoiseFloorMul = a;
+    mDSP.mChorus.mAnalogMul = a;
+  }
+  auto mainsMul = KR106PresetManager::getSetting("mainsNoiseMul");
+  if (!mainsMul.isVoid())
+  {
+    float m = static_cast<float>((double)mainsMul);
+    mDSP.mMainsMul = m;
+    mDSP.mChorus.mMainsMul = m;
+  }
+  auto clockMul = KR106PresetManager::getSetting("clockNoiseMul");
+  if (!clockMul.isVoid())
+    mDSP.mChorus.mClockMul = static_cast<float>((double)clockMul);
+  auto bbdDrive = KR106PresetManager::getSetting("bbdDriveUser");
+  if (!bbdDrive.isVoid())
+  {
+    mDSP.mChorus.mBbdDriveUser = static_cast<float>((double)bbdDrive);
+    mDSP.mChorus.updateBbdDrive();
+  }
+
+  // Force-sync settings to DSP immediately. setValueNotifyingHost only
+  // marks the param dirty; parameterChanged won't fire until processBlock
+  // polls for changes. If the loaded value matches the param default,
+  // the poll never detects a change and the DSP never gets updated.
+  static constexpr int kSettingsParams[] = {
+    kSettingVoices, kSettingOversample, kSettingIgnoreVel,
+    kSettingArpLimitKbd, kSettingArpSync, kSettingLfoSync,
+    kSettingMonoRetrig, kSettingMidiSysEx, kSettingOscMode
+  };
+  for (int idx : kSettingsParams)
+  {
+    float val = mParams[idx]->convertFrom0to1(mParams[idx]->getValue());
+    parameterChanged(idx, val);
+    mLastParamValues[idx] = mParams[idx]->getValue();
+  }
 }
 
 void KR106AudioProcessor::saveGlobalSettings()
 {
+  // Read directly from params (not cached members) because parameterChanged
+  // fires on the audio thread and may not have synced yet when save runs
+  // on the UI thread immediately after setValueNotifyingHost.
+  auto paramInt = [this](int idx) -> int {
+    return juce::roundToInt(mParams[idx]->convertFrom0to1(mParams[idx]->getValue()));
+  };
+  auto paramBool = [this](int idx) -> bool {
+    return mParams[idx]->getValue() > 0.5f;
+  };
+
   KR106PresetManager::saveSetting("settingsVersion", 1);
   KR106PresetManager::saveSetting("uiScale", mUIScale);
-  KR106PresetManager::saveSetting("voiceCount", mVoiceCount);
-  KR106PresetManager::saveSetting("ignoreVelocity", mIgnoreVelocity);
-  KR106PresetManager::saveSetting("arpLimitKbd", mArpLimitKbd);
-  KR106PresetManager::saveSetting("arpSyncHost", mArpSyncHost);
-  KR106PresetManager::saveSetting("lfoSyncHost", mLfoSyncHost);
-  KR106PresetManager::saveSetting("monoRetrigger", mMonoRetrigger);
-  KR106PresetManager::saveSetting("midiOutSysEx", mMidiOutSysEx);
-  KR106PresetManager::saveSetting("vcfOversample", mVcfOversample);
+  KR106PresetManager::saveSetting("voiceCount", paramInt(kSettingVoices));
+  KR106PresetManager::saveSetting("ignoreVelocity", paramBool(kSettingIgnoreVel));
+  KR106PresetManager::saveSetting("arpLimitKbd", paramBool(kSettingArpLimitKbd));
+  KR106PresetManager::saveSetting("arpSyncHost", paramBool(kSettingArpSync));
+  KR106PresetManager::saveSetting("lfoSyncHost", paramBool(kSettingLfoSync));
+  KR106PresetManager::saveSetting("monoRetrigger", paramBool(kSettingMonoRetrig));
+  KR106PresetManager::saveSetting("midiOutSysEx", paramBool(kSettingMidiSysEx));
+  { int v = paramInt(kSettingOversample);
+    KR106PresetManager::saveSetting("vcfOversample", (v <= 1) ? 1 : (v <= 3) ? 2 : 4); }
+  KR106PresetManager::saveSetting("oscMode", paramInt(kSettingOscMode));
+
+  // Save noise/drive levels (variance editor)
+  KR106PresetManager::saveSetting("analogNoiseMul", static_cast<double>(mDSP.mNoiseFloorMul));
+  KR106PresetManager::saveSetting("mainsNoiseMul", static_cast<double>(mDSP.mMainsMul));
+  KR106PresetManager::saveSetting("clockNoiseMul", static_cast<double>(mDSP.mChorus.mClockMul));
+  KR106PresetManager::saveSetting("bbdDriveUser", static_cast<double>(mDSP.mChorus.mBbdDriveUser));
 
   // Save per-voice variance as flat array [v0p0, v0p1, ..., v9p5]
   juce::Array<juce::var> varArr;

@@ -33,6 +33,7 @@ enum EParams
   kSettingMidiSysEx,    // bool
   kArpQuantize,         // 0-8 note division (separate from kArpRate for headless/DSP use)
   kLfoQuantize,         // 0-12 note division (separate from kLfoRate for headless/DSP use)
+  kSettingOscMode,      // 0 = wavetable+upsample, 1 = polyBLEP at Nx
   kNumParams
 };
 

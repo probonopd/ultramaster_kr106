@@ -38,6 +38,8 @@ enum EParams
   kSettingVoices, kSettingOversample, kSettingIgnoreVel,
   kSettingArpLimitKbd, kSettingArpSync, kSettingLfoSync,
   kSettingMonoRetrig, kSettingMidiSysEx,
+  kArpQuantize, kLfoQuantize,
+  kSettingOscMode,
   kNumParams
 };
 

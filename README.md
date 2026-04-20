@@ -20,6 +20,8 @@ measurements, circuit simulation, and firmware analysis.
 
 **[Download latest release](https://github.com/kayrockscreenprinting/ultramaster_kr106/releases/latest)**
 
+**[Full documentation](https://kayrockscreenprinting.github.io/ultramaster_kr106/website/guide.html)**
+
 See [docs/DSP_ARCHITECTURE.md](docs/DSP_ARCHITECTURE.md) for a detailed writeup of the
 signal chain and emulation techniques.
 

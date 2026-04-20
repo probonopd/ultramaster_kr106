@@ -4,27 +4,9 @@
 #include <cstdint>
 #include <algorithm>
 
-// Oscillator mix constants (from hardware measurements)
-namespace kr106 {
-
-// J6/J60: BA662 VCA per waveform, calibrated from Juno-6 recordings
-static constexpr float kSawAmpJ6    = 0.5f;      // SAW is 0v to 12v
-static constexpr float kPulseAmpJ6  = 0.5f;      // PULSE is 0v to +12v TL074
-static constexpr float kSubAmpJ6    = 0.5942f;   // SUB at +1.5 dB over saw (J6 measurement)
-static constexpr float kNoiseAmpJ6  = 1.f;       // Noise level (J6 calibration)
-
-// J106: MC5534 pre-mixed saw/pulse, separate sub and noise mixing resistors.
-// Calibrated from hardware 106_calibration recording (peak-to-peak matched
-// to noise RMS at HPF flat, VCF wide open).
-// Sub/pulse ratio: 1.51x from osc_calibrate recording (both square waves,
-// ratio is recording-gain-independent).
-static constexpr float kSawAmpJ106    = 0.5f;      // SAW is 0v to 12v
-static constexpr float kPulseAmpJ106  = 0.5f;      // PULSE is 0v to +12v TL074
-static constexpr float kSubAmpJ106    = 0.75f;   
-static constexpr float kNoiseAmpJ106  = 1.f;
-
-static constexpr float kSwitchRamp = 1.f / 64.f; // ~1.5ms at 44.1k
-} // namespace kr106
+// Oscillator mix constants and kSwitchRamp are defined in KR106Oscillators.h.
+// Both oscillator implementations share the same calibration values.
+#include "KR106Oscillators.h"
 
 // Bandlimited wavetable oscillators modeled on the Juno-6/106 DCO
 //

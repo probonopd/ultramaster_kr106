@@ -105,6 +105,8 @@ void* kr106_create(float sampleRate)
   setParam(*dsp, kAdsrMode, 1.f);     // J106 mode
   dsp->mMasterVol = 0.5f * 0.5f;      // squared taper default
   setParam(*dsp, kPortaMode, 1.f);     // Poly I (hardware default)
+  dsp->SetOversample(2);
+  dsp->ForEachVoice([](kr106::Voice<float>& v) { v.mOscMode = 1; });
 
   // Load first preset
   loadPreset(*dsp, 0);

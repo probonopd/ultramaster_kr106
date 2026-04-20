@@ -24,7 +24,8 @@ void KR106DSP<T>::SetParam(int paramIdx, double value)
     kSettingArpLimitKbd, kSettingArpSync, kSettingLfoSync,
     kSettingMonoRetrig, kSettingMidiSysEx,
     kArpQuantize,
-    kLfoQuantize
+    kLfoQuantize,
+    kSettingOscMode
   };
 
   switch (paramIdx)

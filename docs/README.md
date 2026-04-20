@@ -2,7 +2,7 @@
 
 A virtual analog synthesizer inspired by the Roland Juno polysynths, with DSP calibrated from hardware measurements, firmware analysis, and factory schematics. 6-voice polyphonic. Free and open source (GPL3).
 
-Full documentation: https://kayrockscreenprinting.github.io/ultramaster_kr106/guide.html
+Full documentation: https://kayrockscreenprinting.github.io/ultramaster_kr106/website/guide.html
 
 ## Installation
 
@@ -123,6 +123,6 @@ Both share the same IR3109 VCF, MN3009 BBD chorus, and DCO architecture, but the
 
 ## Links
 
-- Website: https://kayrockscreenprinting.github.io/ultramaster_kr106/
+- Website: https://kayrockscreenprinting.github.io/ultramaster_kr106/website/
 - Source: https://github.com/kayrockscreenprinting/ultramaster_kr106
-- MIDI Mapping: https://kayrockscreenprinting.github.io/ultramaster_kr106/midi_mapping.html
+- MIDI Mapping: https://kayrockscreenprinting.github.io/ultramaster_kr106/website/midi_mapping.html

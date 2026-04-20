@@ -14,6 +14,8 @@
 #include <vector>
 #include <algorithm>
 #include <string>
+#include <fstream>
+#include <sstream>
 
 // Pull in the DSP engine (header-only)
 #include "../../Source/DSP/KR106_DSP.h"
@@ -35,6 +37,11 @@ enum EParams
   kTransposeOffset, kBenderLfo,
   kAdsrMode,
   kMasterVol,
+  kSettingVoices, kSettingOversample, kSettingIgnoreVel,
+  kSettingArpLimitKbd, kSettingArpSync, kSettingLfoSync,
+  kSettingMonoRetrig, kSettingMidiSysEx,
+  kArpQuantize, kLfoQuantize,
+  kSettingOscMode,
   kNumParams
 };
 
@@ -276,6 +283,60 @@ static void writeWav(const char* filename, const float* L, const float* R,
 
 // --- DSP parameter dispatch ---
 
+// Minimal settings.json reader (no JUCE dependency).
+// Looks for ~/Library/Application Support/KR106/settings.json on macOS,
+// %APPDATA%/KR106/settings.json on Windows.
+static std::string getSettingsPath()
+{
+#ifdef _WIN32
+    const char* appdata = getenv("APPDATA");
+    if (appdata) return std::string(appdata) + "\\KR106\\settings.json";
+#else
+    const char* home = getenv("HOME");
+    if (home) return std::string(home) + "/Library/Application Support/KR106/settings.json";
+#endif
+    return {};
+}
+
+// Extract a numeric value for a key from a JSON string.
+// Handles "key": number and "key": true/false. Returns defaultVal if not found.
+static double jsonGetNumber(const std::string& json, const char* key, double defaultVal)
+{
+    std::string needle = std::string("\"") + key + "\"";
+    auto pos = json.find(needle);
+    if (pos == std::string::npos) return defaultVal;
+    pos = json.find(':', pos + needle.size());
+    if (pos == std::string::npos) return defaultVal;
+    pos++;
+    while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\t')) pos++;
+    if (pos >= json.size()) return defaultVal;
+    if (json.substr(pos, 4) == "true") return 1.0;
+    if (json.substr(pos, 5) == "false") return 0.0;
+    return atof(json.c_str() + pos);
+}
+
+static void applySettings(KR106DSP<float>& dsp)
+{
+    std::string path = getSettingsPath();
+    if (path.empty()) return;
+
+    std::ifstream f(path);
+    if (!f.is_open()) { fprintf(stderr, "No settings.json found\n"); return; }
+    std::stringstream buf;
+    buf << f.rdbuf();
+    std::string json = buf.str();
+
+    int os = static_cast<int>(jsonGetNumber(json, "vcfOversample", 2));
+    os = (os <= 1) ? 1 : (os <= 3) ? 2 : 4;
+    dsp.SetOversample(os);
+
+    int oscMode = static_cast<int>(jsonGetNumber(json, "oscMode", 1));
+    dsp.ForEachVoice([oscMode](kr106::Voice<float>& v) { v.mOscMode = oscMode; });
+
+    fprintf(stderr, "Settings: oversample=%dx, oscMode=%s\n",
+            os, oscMode == 1 ? "polyBLEP" : "wavetable");
+}
+
 static void setParam(KR106DSP<float>& dsp, int param, float value)
 {
     dsp.SetParam(param, static_cast<double>(value));
@@ -335,7 +396,7 @@ int main(int argc, char* argv[])
 {
     if (argc < 2)
     {
-        fprintf(stderr, "Usage: render_midi input.mid [output.wav] [samplerate] [--mono] [--16bit]\n");
+        fprintf(stderr, "Usage: render_midi input.mid [output.wav] [samplerate] [--mono] [--16bit] [--raw] [--gain=N] [--detune=CENTS]\n");
         return 1;
     }
 
@@ -343,6 +404,7 @@ int main(int argc, char* argv[])
     bool mono = false;
     bool raw = false;
     float attenuation = 1.f;
+    float detuneCents = 0.f;
     int bits = 24;
     for (int i = 1; i < argc; i++)
     {
@@ -350,6 +412,7 @@ int main(int argc, char* argv[])
         if (strcmp(argv[i], "--16bit") == 0) bits = 16;
         if (strcmp(argv[i], "--raw") == 0) raw = true;
         if (strncmp(argv[i], "--gain=", 7) == 0) attenuation = static_cast<float>(atof(argv[i] + 7));
+        if (strncmp(argv[i], "--detune=", 9) == 0) detuneCents = static_cast<float>(atof(argv[i] + 9));
     }
 
     auto isFlag = [](const char* s) { return s[0] == '-' && s[1] == '-'; };
@@ -380,14 +443,30 @@ int main(int argc, char* argv[])
     KR106DSP<float> dsp(6);
     dsp.Reset(sr, kBlockSize);
 
+    // Zero component variance for deterministic output
+    dsp.ForEachVoice([](kr106::Voice<float>& voice) {
+        for (int i = 0; i < kr106::Voice<float>::kNumVarianceParams; i++)
+            voice.SetVariance(i, 0.f);
+    });
+
+    // Load oversample and osc mode from settings.json
+    applySettings(dsp);
+
     // Set defaults: power on, J106 mode, master volume
     // Plugin default: slider 0.5, squared taper → 0.25
     setParam(dsp, kPower, 1.f);
     setParam(dsp, kAdsrMode, 1.f);  // J106
     dsp.mMasterVol = 0.5f * 0.5f;   // match plugin default (squared taper)
     setParam(dsp, kVcaLevel, 0.5f); // unity gain (~0 dB)
-    setParam(dsp, kPortaMode, 1.f);  // Poly II (round robin)
+    setParam(dsp, kPortaMode, 1.f);  // Poly I
     setParam(dsp, kDcoSubSw, 1.f);  // Sub always available (no switch on J106)
+
+    // Apply global detune (cents) to match hardware tuning offset
+    if (detuneCents != 0.f)
+    {
+        dsp.mTuning = static_cast<double>(detuneCents) / 100.0;
+        fprintf(stderr, "Detune: %+.1f cents (%+.3f semitones)\n", detuneCents, dsp.mTuning);
+    }
 
     // Convert event ticks to sample positions
     struct RenderEvent {

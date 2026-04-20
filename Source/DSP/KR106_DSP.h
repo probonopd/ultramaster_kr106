@@ -435,16 +435,15 @@ public:
     std::memset(mMixBusOS.data(), 0, sizeof(float) * nFramesOS);
 
     memset(mSyncBuffer.data(), 0, nFrames * sizeof(T));
-    int nv = static_cast<int>(NVoices());
     int scopeVoice = -1;
     int64_t oldestAge = INT64_MAX;
-    for (int i = 0; i < nv; i++)
+    for (int i = 0; i < mActiveVoices; i++)
       if (mVoices[i]->GetBusy() && mVoiceAge[i] < oldestAge) { oldestAge = mVoiceAge[i]; scopeVoice = i; }
 
     bool anyBusy = false;
     ForEachVoice([&](kr106::Voice<T>& v) { anyBusy |= v.GetBusy(); });
     bool anyGated = false;
-    for (int i = 0; i < nv; i++) anyGated |= (mVoiceNote[i] >= 0);
+    for (int i = 0; i < mActiveVoices; i++) anyGated |= (mVoiceNote[i] >= 0);
     if (mPortaMode == 0 && mUnisonNote >= 0) anyGated = true;
     mLFO.SetVoiceActive(anyBusy, anyGated);
 
@@ -464,12 +463,29 @@ public:
       [this](int note, int offset) { SendToSynth(note, false, 0,   offset); });
 
     // Voices accumulate into the Nx mono mix bus.
-    for (auto& v : mVoices)
+    //
+    // J106 idle voices take the VCF-only path: the filter runs (state
+    // advances, self-oscillation continues) but nothing reaches the mix
+    // bus. Matches hardware where the voice firmware computes the VCF
+    // DAC for every voice every main-loop pass regardless of gate state
+    // (see ic29.txt voice loop at $04D5), and the IR3109 filters
+    // continuously self-oscillate at high Q between notes.
+    //
+    // J6 / J60 idle voices are skipped — those models use the log-freq
+    // VCF path which does not yet have an idle-processing equivalent.
+    for (int vi = 0; vi < mActiveVoices; vi++)
     {
-      if (!v->GetBusy()) continue;
-      v->mLfoEnvAmp = mLFO.mAmp;
-      v->ProcessSamplesAccumulating(mModulations.data(), mMixBusOS.data(),
-                                    kNumModulations, 0, nFrames);
+      auto& v = *mVoices[vi];
+      v.mLfoEnvAmp = mLFO.mAmp;
+      if (v.GetBusy())
+      {
+        v.ProcessSamplesAccumulating(mModulations.data(), mMixBusOS.data(),
+                                      kNumModulations, 0, nFrames);
+      }
+      else if (v.mModel == kr106::kJ106)
+      {
+        v.ProcessIdleVcfJ106(mModulations.data(), kNumModulations, 0, nFrames);
+      }
     }
 
    // Decimate Nx mono mix bus down to base rate, writing into outputs[0].

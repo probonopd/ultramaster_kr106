@@ -537,8 +537,6 @@ function vcfFreqComp(k,frq){
   const lowQ=2.004*Math.pow(Math.max(frq,1e-5),0.162);
   const blend=Math.min(k*k*0.0625,1);
   return lowQ+blend*(1-lowQ)}
-function vcfInputComp(k){return 0.252+0.058*k}
-
 function drawScopeVCF(ch){
   const{x:sx,y:sy,w}=SC;const h=ch;
   const j6=paramValues[P.adsrMode]<0.5;
@@ -556,11 +554,6 @@ function drawScopeVCF(ch){
   const sr=synth.ctx?synth.ctx.sampleRate:44100;
   const frqNorm=fcSlider/sr;
   const fc=fcSlider*vcfFreqComp(k,frqNorm);
-
-  // Input compensation + output gain
-  const comp=vcfInputComp(k);
-  const outGain=4.85;
-  const totalComp=comp*outGain;
 
   // Display range
   const fMin=5,fMax=50000;
@@ -646,7 +639,7 @@ let aboutFrame=0;
 
 function buildAboutPixels(w,h){
   // Rasterize text into pixel array
-  const lines=['ULTRAMASTER','KR-106','2.5.8','BUILD 04-16 21:20']; // version and build date updated by Makefile
+  const lines=['ULTRAMASTER','KR-106','2.5.9','BUILD 04-20 15:39']; // version and build date updated by Makefile
   const pixels=[];
   const lineH=10; // 7px glyph + 3px gap
   const totalH=lines.length*lineH;

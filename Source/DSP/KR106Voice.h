@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "KR106ADSR.h"
+#include "KR106Oscillators.h"
 #include "KR106OscillatorsWT.h"
 #include "KR106Resampler.h"
 #include "KR106VCA.h"
@@ -25,8 +26,13 @@ template <typename T> class Voice
 public:
   // DSP modules
   OscillatorsWT mOsc;
+  Oscillators mOscBLEP;
   VCF mVCF;
   ADSR mADSR;
+
+  // Oscillator mode: 0 = wavetable at 1x + upsampling (default)
+  //                  1 = polyBLEP at oversampled rate (no upsampling)
+  int mOscMode = 0;
 
 
 
@@ -98,6 +104,7 @@ public:
   // VCF DAC for each voice in sequence. A single tick accumulator keeps
   // them perfectly synchronized — the VCF always reads the just-updated
   // envelope value from the same loop iteration.
+  int mVoiceIndex         = 0;     // set by InitVariance
   int mMidiNote           = 60;    // MIDI note number (for firmware 8.8 pitch)
   float mLfoEnvAmp        = 0.f;   // LFO onset envelope (set by DSP per block)
   float mFwTickAccum      = 0.f;   // unified tick accumulator [0, 1)
@@ -110,7 +117,6 @@ public:
   float mDacSmoothCoeff   = 0.f;   // one-pole coefficient for DAC/env smoothing
   float mPwSmooth         = 0.5f;  // RC-smoothed pulse width (models .01uF cap on PWM CV)
   float mDcoPitchSmooth   = 0.f;   // RC-smoothed DCO pitch CV (models .01uF cap on DCO CV)
-  float mVcfResSmooth     = 0.f;   // RC-smoothed VCF resonance CV (models .01uF cap on RES CV)
 
   // J106 integer parameter cache (set by SetParam, avoids per-sample conversion)
   uint16_t mVcfCutoffInt  = 0;     // 14-bit slider value (0x0000–0x3F80)
@@ -181,6 +187,7 @@ public:
 
   void InitVariance(int voiceIndex)
   {
+    mVoiceIndex = voiceIndex;
     // Deterministic LCG PRNG seeded by voice index — same offsets every
     // session, modeling one specific unit's fixed component tolerances.
     uint32_t seed = static_cast<uint32_t>(voiceIndex) * 2654435761u + 0x46756E6Bu;
@@ -716,6 +723,58 @@ public:
         mADSR.mEnvInt, pitch88);
   }
 
+  // Idle-voice variant of FirmwareTick (J106): computes only the VCF DAC.
+  //
+  // The D7811G firmware runs the same main-loop VCF calculation for every
+  // voice on every pass, regardless of gate state — see ic29.txt around
+  // $04D5 (the voice loop iterates voicePtr 0..5 unconditionally). The
+  // key-follow term reads from $FF71_notePitchFrac, which is written by
+  // the portamento code from $FF09_voice1Note — initialized to $3C
+  // (middle C) at power-on and overwritten by the assigner on each note
+  // assignment, never cleared on note-off. This matches the observable
+  // hardware behavior that self-oscillating voices never stop oscillating,
+  // they just retune across keyTrack changes.
+  //
+  // We skip ADSR.Tick106() here: an at-rest ADSR (mEnvInt == 0) stays at
+  // rest, and by definition this path only runs when GetBusy() is false.
+  // Envelope contribution to the VCF DAC is therefore 0 regardless.
+  void FirmwareTickIdleVcfJ106(float lfoRaw)
+  {
+    // LFO path: same as FirmwareTick. mLfoEnvAmp has already been set
+    // by the DSP at block start and reflects the current onset envelope.
+    uint16_t lfoVal = static_cast<uint16_t>(fabsf(lfoRaw) * 0x1FFF);
+    bool lfoPolarity = (lfoRaw < 0.f);
+    uint8_t depthScalar = static_cast<uint8_t>(mLfoEnvAmp * 255.f);
+    uint16_t vcfLfoSignal = kr106::calc_vcf_lfo_signal(
+        mVcfLfoDepthInt, depthScalar, lfoVal);
+
+    // Bend path: same as FirmwareTick.
+    uint8_t bendVal = static_cast<uint8_t>(fabsf(mRawBend) * 255.f);
+    bool bendPol = (mRawBend < 0.f);
+    uint16_t vcfBendAmt = kr106::calc_vcf_bend_amt(mVcfBendSensInt, bendVal);
+
+    // Pitch for keyTrack: middle C if this voice has never been played
+    // (mGlidePitch < -10.f is the uninitialized sentinel set in the
+    // class-member initializer; see also Trigger's snap-on-first-note
+    // logic). Otherwise the last glide pitch, which persists across
+    // note-off exactly like $FF09/$FF71 in hardware. Middle C in the
+    // voice's A440-relative octave convention: (60 - 69) / 12 = -0.75.
+    float pitchForKbd = (mGlidePitch < -10.f) ? -0.75f : mGlidePitch;
+    float glideMidi = pitchForKbd * 12.f + 69.f;
+    uint16_t pitch88 = static_cast<uint16_t>(
+        std::clamp(static_cast<int>(glideMidi * 256.f), 0, 127 << 8));
+
+    bool envPol = (mVcfEnvInvert > 0);
+    // mADSR.mEnvInt is 0 for a fully-idle voice; passing it through is
+    // identical to zeroing it explicitly but avoids an implicit
+    // assumption about ADSR internals.
+    mVcfDacNext = kr106::calc_vcf_freq(
+        mVcfCutoffInt, vcfLfoSignal, vcfBendAmt,
+        mVcfEnvModInt, mVcfKeyTrackInt,
+        lfoPolarity, bendPol, envPol,
+        mADSR.mEnvInt, pitch88);
+  }
+
   bool GetBusy() const { return mADSR.GetBusy(); }
 
   void SetUnisonPitch(double pitch) { mPitch = pitch; }
@@ -776,6 +835,7 @@ public:
     mADSR.SetSampleRate(mSampleRate);
     mVCF.SetSampleRate(mSampleRate);
     mVCF.Reset();
+    mOscBLEP.Init(mSampleRate * mOversample);
     // Per-voice upsampler pair (1× → 2× → 4×). Uses the same
     // HIIR half-band coefficients as the shared mix-bus decimator.
     mOscUp1.set_coefs(kr106::kResamplerCoefs2x);
@@ -960,7 +1020,7 @@ public:
       // This is where tanf, expf, powf etc. live. Running it 1× instead of
       // 4× is the whole point of the refactor.
       mVCF.TrackInputEnv(mLastOscPeak);
-      mVCF.UpdateCoeffs(vcfCPS, mVcfResSmooth);
+      mVCF.UpdateCoeffs(vcfCPS, mVcfRes);
 
       // --- VCA gain (base-rate; same gain applied to all 4 sub-samples) ---
       // RC smooth the gate envelope (same 1ms DAC output filter as ADSR)
@@ -969,46 +1029,147 @@ public:
         ? kr106::VCAGain(mGateEnvSmooth, mModel) * velocity * mVcaGainScale
         : kr106::VCAGain(env,            mModel) * velocity * mVcaGainScale;
 
-      // Resonance CV smoothing stays base-rate (models .01uF cap on RES CV)
-      mVcfResSmooth += (mVcfRes - mVcfResSmooth) * mDacSmoothCoeff;
 
-      // --- Oscillator at 1× (base rate) ---
-      // PrepareBlock hoists log2f + OctaveToTable + PW clamp etc; the
-      // following single ProcessSample call is the whole per-base-sample
-      // oscillator cost. Noise is added here, before upsampling, so the
-      // upsampler's half-band filter bandlimits the noise as well.
-      mOsc.PrepareBlock(cps, pw, mSawOn, mPulseOn, mSubOn, mDcoSub);
-      bool syncBase = false;
-      float oscOut = mOsc.ProcessSample(syncBase);
-      if (noiseAT > 0.f)
-        oscOut += static_cast<float>(noiseBuffer[i]) * mOsc.mNoiseAmp * noiseAT;
-      mLastOscPeak = fabsf(oscOut);
-      (void)syncBase;
-
-      // --- Upsample and VCF at Nx rate, accumulate into mix bus ---
       float* mixSlot = mixBus + i * mOversample;
+
+      if (mOscMode == 1)
+      {
+        // --- PolyBLEP at oversampled rate (no upsampling) ---
+        // Oscillator runs at Nx, feeding VCF directly each sub-sample.
+        // Noise: zero-order hold from base rate. Same value on all
+        // sub-samples gives correct amplitude; the sinc² rolloff is
+        // above base Nyquist (>22 kHz) and well into VCF stopband.
+        float cpsOS = cps / static_cast<float>(mOversample);
+        float noise = (noiseAT > 0.f)
+            ? static_cast<float>(noiseBuffer[i]) * mOscBLEP.mNoiseAmp * noiseAT
+            : 0.f;
+        float peak = 0.f;
+        for (int k = 0; k < mOversample; k++)
+        {
+          bool sync = false;
+          float s = mOscBLEP.Process(cpsOS, pw, mSawOn, mPulseOn, mSubOn, mDcoSub, 0.f, sync);
+          s += noise;
+          float out = mVCF.ProcessSample(s) * vcaGain;
+          mixSlot[k] += out;
+          float a = fabsf(s);
+          if (a > peak) peak = a;
+        }
+        mLastOscPeak = peak;
+      }
+      else
+      {
+        // --- Wavetable at 1× (base rate) + upsampling ---
+        mOsc.PrepareBlock(cps, pw, mSawOn, mPulseOn, mSubOn, mDcoSub);
+        bool syncBase = false;
+        float oscOut = mOsc.ProcessSample(syncBase);
+        if (noiseAT > 0.f)
+          oscOut += static_cast<float>(noiseBuffer[i]) * mOsc.mNoiseAmp * noiseAT;
+        mLastOscPeak = fabsf(oscOut);
+        (void)syncBase;
+
+        // --- Upsample and VCF at Nx rate, accumulate into mix bus ---
+        if (mOversample == 4)
+        {
+          float s2_0, s2_1;
+          mOscUp1.process_sample(s2_0, s2_1, oscOut);
+          float s4[4];
+          mOscUp2.process_sample(s4[0], s4[1], s2_0);
+          mOscUp2.process_sample(s4[2], s4[3], s2_1);
+          mixSlot[0] += mVCF.ProcessSample(s4[0]) * vcaGain;
+          mixSlot[1] += mVCF.ProcessSample(s4[1]) * vcaGain;
+          mixSlot[2] += mVCF.ProcessSample(s4[2]) * vcaGain;
+          mixSlot[3] += mVCF.ProcessSample(s4[3]) * vcaGain;
+        }
+        else if (mOversample == 2)
+        {
+          float s2_0, s2_1;
+          mOscUp1.process_sample(s2_0, s2_1, oscOut);
+          mixSlot[0] += mVCF.ProcessSample(s2_0) * vcaGain;
+          mixSlot[1] += mVCF.ProcessSample(s2_1) * vcaGain;
+        }
+        else // 1x — no upsampling
+        {
+          mixSlot[0] += mVCF.ProcessSample(oscOut) * vcaGain;
+        }
+      }
+    }
+  }
+
+  // J106 idle-voice processing: keeps the VCF running (filter state +
+  // self-oscillation) while the voice has no active note.
+  //
+  // Rationale: on real hardware, the D7811G firmware runs the same
+  // VCF-DAC calculation for every voice on every main-loop pass (ic29.txt,
+  // voice loop at $04D5). The IR3109 OTA filters are continuously biased
+  // and continuously self-oscillate at high Q, independent of the VCA
+  // gate. Skipping this for idle voices cold-starts each filter on
+  // note-on, which loses:
+  //   • Free-running self-osc phase across notes (six independent
+  //     oscillators drifting against each other between notes)
+  //   • Filter state continuity — e.g. a note triggered while the filter
+  //     is mid-ring hears the ring complete, not a reset
+  //   • Per-voice component variance beating at high Q
+  //
+  // This path writes nothing to the mix bus — the VCA is closed for an
+  // idle voice, and we are not modeling VCA leakage. Only the VCF's
+  // internal state advances.
+  //
+  // J106 only. Non-J106 models fall through to the DSP's skip-continue
+  // (see KR106_DSP.h ProcessBlock dispatch).
+  void ProcessIdleVcfJ106(T** inputs, int nInputs, int startIdx, int nFrames)
+  {
+    // Raw LFO triangle (pre-onset-envelope) is what the J106 firmware
+    // integer path consumes — same as the busy path at index kModLFORaw.
+    T* lfoRawBuffer = (nInputs > 1 && inputs[1]) ? inputs[1] : nullptr;
+
+    for (int i = startIdx; i < startIdx + nFrames; i++)
+    {
+      float lfoRaw = lfoRawBuffer ? static_cast<float>(lfoRawBuffer[i]) : 0.f;
+
+      // Fire firmware VCF ticks at 238.1 Hz. Accumulator phase is shared
+      // with the busy path (mFwTickAccum is a single member) so tick
+      // timing is continuous across idle/busy transitions — matches the
+      // real firmware loop which runs continuously regardless of voice
+      // gate state.
+      mFwTickAccum += mFwTickStep;
+      while (mFwTickAccum >= 1.f)
+      {
+        mFwTickAccum -= 1.f;
+        FirmwareTickIdleVcfJ106(lfoRaw);
+      }
+
+      // RC-smooth the DAC output (same 1ms tau as the busy path).
+      mVcfDacSmooth += (static_cast<float>(mVcfDacNext) - mVcfDacSmooth) * mDacSmoothCoeff;
+      float vcfHz = kr106::dacToHz(static_cast<uint16_t>(std::clamp(mVcfDacSmooth, 0.f, 16256.f)));
+      float vcfCPS = vcfHz * mInvNyq;
+
+      // Control-rate VCF coefficient update. Pass 0 to TrackInputEnv so
+      // the noise-seeding envelope follower decays naturally while idle;
+      // when the voice is triggered again, mLastOscPeak drives it
+      // normally from the first busy sample.
+      mVCF.TrackInputEnv(0.f);
+      mVCF.UpdateCoeffs(vcfCPS, mVcfRes);
+
+      // Run the filter at the configured oversample rate with zero
+      // input. Output is discarded — the VCA is closed for an idle
+      // voice, so nothing reaches the mix bus. The internal state
+      // (mS[0..3]) advances, which is the whole point: self-oscillation
+      // continues to phase-evolve across note boundaries.
       if (mOversample == 4)
       {
-        float s2_0, s2_1;
-        mOscUp1.process_sample(s2_0, s2_1, oscOut);
-        float s4[4];
-        mOscUp2.process_sample(s4[0], s4[1], s2_0);
-        mOscUp2.process_sample(s4[2], s4[3], s2_1);
-        mixSlot[0] += mVCF.ProcessSample(s4[0]) * vcaGain;
-        mixSlot[1] += mVCF.ProcessSample(s4[1]) * vcaGain;
-        mixSlot[2] += mVCF.ProcessSample(s4[2]) * vcaGain;
-        mixSlot[3] += mVCF.ProcessSample(s4[3]) * vcaGain;
+        mVCF.ProcessSample(0.f);
+        mVCF.ProcessSample(0.f);
+        mVCF.ProcessSample(0.f);
+        mVCF.ProcessSample(0.f);
       }
       else if (mOversample == 2)
       {
-        float s2_0, s2_1;
-        mOscUp1.process_sample(s2_0, s2_1, oscOut);
-        mixSlot[0] += mVCF.ProcessSample(s2_0) * vcaGain;
-        mixSlot[1] += mVCF.ProcessSample(s2_1) * vcaGain;
+        mVCF.ProcessSample(0.f);
+        mVCF.ProcessSample(0.f);
       }
-      else // 1x — no upsampling
+      else
       {
-        mixSlot[0] += mVCF.ProcessSample(oscOut) * vcaGain;
+        mVCF.ProcessSample(0.f);
       }
     }
   }

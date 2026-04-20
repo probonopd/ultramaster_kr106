@@ -389,6 +389,10 @@ void KR106Editor::showSettingsMenu()
     items.push_back(KR106MenuItem::item(22, "Mono Retrigger",        true, mProcessor.mMonoRetrigger));
     items.push_back(KR106MenuItem::item(26, "MIDI SysEx",       true, mProcessor.mMidiOutSysEx));
     items.push_back(KR106MenuItem::sep());
+    { auto* oscP = mProcessor.getParam(kSettingOscMode);
+      bool blep = oscP && oscP->getValue() > 0.5f;
+      items.push_back(KR106MenuItem::item(27, "PolyBLEP Oscillator", true, blep)); }
+    items.push_back(KR106MenuItem::sep());
     items.push_back(KR106MenuItem::makeAction(40, "Component Variance Editor"));
     items.push_back(KR106MenuItem::makeAction(41, "Keyboard Shortcuts"));
     // items.push_back(KR106MenuItem::item(42, "Click Debug Mode",          true, mClickDebugEnabled));
@@ -425,6 +429,7 @@ void KR106Editor::showSettingsMenu()
             if (r == 25) toggleBoolParam(kSettingLfoSync);
             if (r == 22) toggleBoolParam(kSettingMonoRetrig);
             if (r == 26) toggleBoolParam(kSettingMidiSysEx);
+            if (r == 27) toggleBoolParam(kSettingOscMode);
             if (r == 40)
             {
                 mSettingsMenu.reset();
