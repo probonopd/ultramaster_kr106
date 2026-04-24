@@ -247,24 +247,24 @@ inline uint16_t calc_vcf_bend_amt(
  */
 inline float dacToHz(uint16_t dac)
 {
-  // Hardware-fitted model, SN#193284. Anchor f(6272)=248 Hz preserved.
-  // RMS residual 13 cents, max 33 cents across full 0..16256 DAC range.
+  // Hardware-fitted model, SN#193284 (lfrancis unit, 192 kHz capture).
+  // Fitted to 49 data points: zero-crossing measurements (bytes 0-72),
+  // FFT peak detection (bytes 80-120), spectrum analysis (bytes 121-127).
+  // RMS residual ~16 cents, max ~46 cents across full 0-16256 DAC range.
+  // Musical range (bytes 32-120, 70 Hz - 39 kHz): RMS ~15 cents.
   //
-  // Structure:
-  //   1. Low-current floor term captures expo-converter leakage/offset
-  //   2. Exponential core: physical expo converter in its linear regime
-  //   3. Soft-knee power saturation: OTA/downstream compression toward
-  //      a real ceiling, softer approach than tanh (empirically n~1.79)
-  static constexpr float kFloor    = 0.853f;
-  static constexpr float kBaseFreq = 5.7688f;
-  static constexpr float kScale    = 0.693147f / 1156.98f;
-  static constexpr float kCeil     = 57086.7f;
-  static constexpr float kKneeN    = 1.792f;
-  static constexpr float kInvKneeN = 1.0f / kKneeN;
+  // Generalized compression: f / (1 + (f/c)^n)^(1/n)
+  // Softer than tanh (n≈1.92 vs tanh's n→∞), matching the IR3109 expo
+  // converter's gradual saturation at high bias currents.
+  static constexpr float kBaseFreq = 6.1556f;
+  static constexpr float kScale    = 0.0005929967f;
+  static constexpr float kCeil     = 56504.1f;
+  static constexpr float kCompN    = 1.9303f;
+  static constexpr float kInvCompN = 1.f / kCompN;
 
-  float f_un = kFloor + kBaseFreq * expf(static_cast<float>(dac) * kScale);
-  float r    = f_un / kCeil;
-  return f_un / powf(1.0f + powf(r, kKneeN), kInvKneeN);
+  float f = kBaseFreq * expf(static_cast<float>(dac) * kScale);
+  float r = f / kCeil;
+  return f / powf(1.f + powf(r, kCompN), kInvCompN);
 }
 
 } // namespace kr106
