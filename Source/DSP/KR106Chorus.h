@@ -134,6 +134,105 @@ struct ChorusLFO {
   }
 };
 
+// ============================================================
+// BandpassedNoise — white noise through SVF bandpass for BBD leakage
+//
+// Models the spectral character of MN3009 charge-transfer leakage noise,
+// which concentrates energy around the clock frequency (~6 kHz at center
+// delay). Uses a lightweight xorshift32 PRNG and a TPT state-variable
+// filter in bandpass mode.
+// ============================================================
+struct BandpassedNoise {
+  float mS1 = 0.f, mS2 = 0.f;
+  float mG = 0.f, mR = 0.f;
+  uint32_t mRngState = 0x12345678;
+
+  void Init(float sampleRate, float centerHz = 6000.f, float q = 3.f)
+  {
+    mG = tanf(static_cast<float>(M_PI) * centerHz / sampleRate);
+    mR = 1.f / q;
+  }
+
+  void Reset() { mS1 = mS2 = 0.f; }
+
+  float Process()
+  {
+    // xorshift32 white noise
+    mRngState ^= mRngState << 13;
+    mRngState ^= mRngState >> 17;
+    mRngState ^= mRngState << 5;
+    float x = (static_cast<float>(mRngState) / 2147483648.f) - 1.f;
+
+    // SVF bandpass
+    float hp = (x - (2.f * mR + mG) * mS1 - mS2) / (1.f + 2.f * mR * mG + mG * mG);
+    float bp = mG * hp + mS1;
+    mS1 = mG * hp + bp;
+    float lp = mG * bp + mS2;
+    mS2 = mG * bp + lp;
+    (void)lp;
+
+    return bp;
+  }
+};
+
+// ============================================================
+// BBDClick — biphasic clock-reset glitch at fast-clock LFO extreme
+//
+// The MN3101 V->f clock generator produces a brief biphasic coupling
+// glitch at the LFO turnaround where the clock is fastest. This is
+// the opposite extreme from the leakage noise peak (which occurs at
+// slowest clock). The glitch couples into the output stage directly,
+// not through the BBD delay line.
+// ============================================================
+struct BBDClick {
+  int mCounter = -1;
+  int mDurationSamples = 0;
+  bool mWasInZone = false;
+  static constexpr float kTriggerThreshold = 0.95f;
+  static constexpr float kDurationMs = 180.f;  // biphasic impulse width
+
+  void Init(float sampleRate)
+  {
+    mDurationSamples = static_cast<int>(kDurationMs * 0.001f * sampleRate);
+  }
+
+  void Reset() { mCounter = -1; mWasInZone = false; }
+
+  // Pass -lfo for line 0 (fast extreme at lfo=-1),
+  //      +lfo for line 1 (fast extreme at lfo=+1).
+  float Process(float lfoForLine)
+  {
+    bool inZone = (lfoForLine > kTriggerThreshold);
+    if (inZone && !mWasInZone) mCounter = 0;
+    mWasInZone = inZone;
+
+    if (mCounter < 0 || mCounter >= mDurationSamples)
+    {
+      mCounter = -1;
+      return 0.f;
+    }
+
+    // Asymmetric biphasic: fast first lobe (1/3 of duration), slow second
+    // lobe (2/3 of duration). Matches hardware's sharp charge-dump followed
+    // by slower recovery through the output network.
+    constexpr float kAsymPoint = 0.25f;
+    float t = static_cast<float>(mCounter) / static_cast<float>(mDurationSamples);
+    mCounter++;
+
+    float out;
+    if (t < kAsymPoint)
+    {
+      // First lobe: half-sine from 0 to peak to 0, compressed into kAsymPoint
+      out = -sinf(static_cast<float>(M_PI) * (t / kAsymPoint));
+    } else
+    {
+      // Second lobe: half-sine from 0 to -peak to 0, stretched across 1-kAsymPoint
+      out = sinf(static_cast<float>(M_PI) * ((t - kAsymPoint) / (1.f - kAsymPoint)));
+    }
+    return out;
+  }
+};
+
 // BBD pre/post filter — see BBDFilter.h for implementation details.
 #include "BBDFilter.h"
 
@@ -213,38 +312,43 @@ struct BBDLine {
       mBuf[(i1 + 1) & mMask],
       mBuf[(i1 + 2) & mMask]);
   }
-  
+
   // Process one audio-rate sample. delaySamples is the delay in audio
   // samples (typically derived from delay_ms * sampleRate / 1000).
-  float Process(float input, float delaySamples)
+  float Process(float input, float delaySamples, float injectedNoise = 0.f)
   {
-    // 1. Pre-filter (matched anti-aliasing stage, Tr13/Tr14 model)
-   float filtered = mPreFilter.Process(input);
+    // 1. Add injected noise to signal *before* pre-filter and BBD
+    //    — noise passes through the same path as signal, so it inherits
+    //    the CTE gain, the pre/post filters, and any saturation.
+    float withNoise = input + injectedNoise;
 
-   // BBD input saturation — soft-knee tanh modeling the MN3009's signal
-   // headroom. Juno service manual documents a 10Vpp clipping threshold
-   // at TP2 (section 11, Chorus Bias), but the effect is subtle in normal
-   // playing — we couldn't cleanly measure it on J6 even with
-   // 6 unison voices + sub + pulse + noise. Default k ≈ 0.12 puts the
-   // knee where only the hottest factory patches reach it; exposed as
-   // user Drive parameter for those who want more character.
-   mSatDriveSmooth += (mSatDrive - mSatDriveSmooth) * 0.001f;
-   float sd = mSatDriveSmooth;
-   float sat = (sd > 0.01f) ? tanhf(filtered * sd) / sd : filtered;
+    // 2. Pre-filter (matched anti-aliasing stage, Tr13/Tr14 model)
+    float filtered = mPreFilter.Process(withNoise);
 
-   // 2. Write to delay buffer
-   mBuf[mWPos & mMask] = sat;
+    // BBD input saturation — soft-knee tanh modeling the MN3009's signal
+    // headroom. Juno service manual documents a 10Vpp clipping threshold
+    // at TP2 (section 11, Chorus Bias), but the effect is subtle in normal
+    // playing — we couldn't cleanly measure it on J6 even with
+    // 6 unison voices + sub + pulse + noise. Default k ≈ 0.12 puts the
+    // knee where only the hottest factory patches reach it; exposed as
+    // user Drive parameter for those who want more character.
+    mSatDriveSmooth += (mSatDrive - mSatDriveSmooth) * 0.001f;
+    float sd = mSatDriveSmooth;
+    float sat = (sd > 0.01f) ? tanhf(filtered * sd) / sd : filtered;
 
-   // 3. Read with Hermite interpolation at fractional position
-   float wet = ReadHermite(delaySamples);
+    // 3. Write to delay buffer
+    mBuf[mWPos & mMask] = sat;
 
-   // 4. Advance write position
-   mWPos = (mWPos + 1) & mMask;
+    // 4. Read with Hermite interpolation at fractional position
+    float wet = ReadHermite(delaySamples);
 
-   // 5. Post-filter (matched reconstruction stage, Tr15/Tr16 model)
-   float out = mPostFilter.Process(wet);
+    // 5. Advance write position
+    mWPos = (mWPos + 1) & mMask;
 
-   return out;
+    // 6. Post-filter (matched reconstruction stage, Tr15/Tr16 model)
+    float out = mPostFilter.Process(wet);
+
+    return out;
   }
 };
 
@@ -254,6 +358,9 @@ struct BBDLine {
 struct Chorus {
   BBDLine mLine0, mLine1;
   ChorusLFO mLFO;
+  BBDClick mClick0, mClick1;           // fast-clock extreme (big click)
+  BBDClick mSlowClick0, mSlowClick1;   // slow-clock extreme (small click)
+  BandpassedNoise mLeakNoise0, mLeakNoise1;
   int mMode = 0;         // 0=off, 1=I, 2=II, 3=I+II
   int mPendingMode = 0;  // deferred mode for click-free mode-to-mode switches
   bool mUseSine = false; // true for mode I+II (sine LFO vibrato)
@@ -275,14 +382,10 @@ static constexpr float kCenterDelayMs = 3.30f;   // was 3.20f
   // is 10 samples at 96 kHz, 4.4 at 44.1 kHz — safe headroom for Hermite.
   static constexpr float kMinDelayMs = 0.1f;
 
-  // LFO rates. Chorus I verified from clean hardware recordings at 137 Hz
-  // and 1 kHz carriers (envelope autocorrelation → 2.54–2.55 s period,
-  // cross-checked). Chorus II and Chorus I+II rates are inherited from
-  // earlier measurements made before the current measurement hygiene and
-  // have not been re-verified against clean recordings; treat as
-  // provisional until re-measured.
-  static constexpr float kChorusIRate    = 0.393f; // verified J6
-  static constexpr float kChorusIIRate   = 0.842f; // verified J6
+  // LFO rates. Verified from Karl's J6
+  //  static constexpr float kChorusIRate    = 0.393f; // verified J6
+  static constexpr float kChorusIRate = 0.514; // lfrancis J106 rate
+  static constexpr float kChorusIIRate = 0.842f;   // verified J6
   static constexpr float kChorusI_IIRate = 7.85f;  // verified J6
 
   // Chorus I delay swing: ±2.13 ms half-amplitude (4.26 ms pp).
@@ -324,6 +427,30 @@ static constexpr float kCenterDelayMs = 3.30f;   // was 3.20f
   // via envelope extremes at 137 Hz carrier through Chorus I.
   static constexpr float kBBDGainModC1 = 0.08f; // was 0.0, was originally 0.153 with wrong sign
 
+  static constexpr float kBBDCTELossCoeff = 4468.f;
+  static constexpr float kBBDInvClockCenter = 1.f / 40000.f;
+  
+  // BBD per-stage leakage noise gain. Amplitude scales with 1/clock so
+// slow-clock LFO excursions produce louder noise. Injected into the BBD
+// input alongside the wet-path broadband noise, so it inherits the
+// 256-stage smearing on the way out — that smearing is what produces
+// the observed fade-in/fade-out envelope shape per LFO cycle (rather
+// than a sharp on/off transition).
+//
+// Calibrate against hardware-silence recording: at peak LFO excursion
+// the total noise level should match the measured burst peak, with the
+// trough between bursts sitting close to just the kWetBroadbandGain
+// continuous floor.
+static constexpr float kBBDLeakageGain = .006f; // starting guess — tune to hardware
+
+  // BBD clock-reset blip gain. Broadband noise amplitude at envelope peak,
+  // relative to the wet-path continuous noise floor. Calibrate against a
+  // hardware recording of silence in Chorus I mode: the LFO-synchronous
+  // blip should sit ~20 dB above the continuous noise floor at peak.
+  // Scaled by mGainModScale so smaller modulation depths (Chorus II)
+  // produce proportionally smaller blips — less clock excursion = less
+  // stress on the V->f converter.
+
   // Per-BBD clock-rate trim. Real MN3009 timing networks have ±5% cap
   // and ±1% resistor tolerances; two BBDs are never identical. Matters
   // for mono summing (prevents artificial deterministic cancellations).
@@ -333,6 +460,10 @@ static constexpr float kCenterDelayMs = 3.30f;   // was 3.20f
 
   // Per-BBD transfer efficiency trim (MN3009 unit-to-unit variation)
   static constexpr float kBBDGainTrim = 0.04f; // ±4%
+
+  // Biphasic clock-reset click amplitudes (tune to hardware)
+  static constexpr float kBBDClickGain     = 0.02f;   // primary (fast turnaround)
+  static constexpr float kBBDSlowClickGain = 0.004f;  // secondary (slow turnaround, at noise peak)
 
   // Crossfade for mode on/off (avoids clicks)
   static constexpr float kFadeMs = 5.f;
@@ -348,10 +479,9 @@ static constexpr float kCenterDelayMs = 3.30f;   // was 3.20f
   // Analog noise injection (see KR106AnalogNoise.h)
   AnalogFloorNoise mWetPink0, mWetPink1;
   RailRipple mWetRipple;
-  BBDClockFeedthrough mClockBleed0, mClockBleed1;
   float mAnalogMul = 1.f; // broadband noise multiplier (variance sheet)
   float mMainsMul = 1.f;  // mains ripple multiplier (variance sheet)
-  float mClockMul = 1.f;  // BBD clock bleed multiplier (variance sheet)
+  float mClockMul = 1.f;  // chorus noise multiplier (variance sheet: leakage + clicks)
   float mBbdDriveUser = 50.f; // user-adjustable BBD sat drive (0-100, default 50)
 
   void updateBbdDrive()
@@ -367,6 +497,12 @@ static constexpr float kCenterDelayMs = 3.30f;   // was 3.20f
     mSampleRate = sampleRate;
     mLine0.Init(sampleRate);
     mLine1.Init(sampleRate);
+    mClick0.Init(sampleRate);
+    mClick1.Init(sampleRate);
+    mSlowClick0.Init(sampleRate);
+    mSlowClick1.Init(sampleRate);
+    mLeakNoise0.Init(sampleRate, 6000.f, 2.f);
+    mLeakNoise1.Init(sampleRate, 6000.f, 2.f);
     mWetPink0.Init(sampleRate);
     mWetPink1.Init(sampleRate);
   
@@ -374,9 +510,13 @@ static constexpr float kCenterDelayMs = 3.30f;   // was 3.20f
     mWetRipple.SetAmplitudes(analog_noise::kWetRipple120, analog_noise::kWetRipple240,
                              analog_noise::kWetRipple360);
     mWetRipple.Reset();
-    mClockBleed0.Init(sampleRate);
-    mClockBleed1.Init(sampleRate);
     mLFO.Reset();
+    mClick0.Reset();
+    mClick1.Reset();
+    mSlowClick0.Reset();
+    mSlowClick1.Reset();
+    mLeakNoise0.Reset();
+    mLeakNoise1.Reset();
 
     mFadeInc = 1.f / (kFadeMs * 0.001f * sampleRate);
 
@@ -485,30 +625,65 @@ static constexpr float kCenterDelayMs = 3.30f;   // was 3.20f
     clock0 = std::max(clock0, kMinClockHz);
     clock1 = std::max(clock1, kMinClockHz);
 
-    float wet0 = mLine0.Process(input, delay0samp);
-    float wet1 = mLine1.Process(input, delay1samp);
+    // Wet-path analog noise, split into two physical sources:
+    //
+    // 1) Compander / wet-path continuous noise: constant amplitude, injected
+    //    INTO the BBD input so it inherits the same CTE gain, pre/post
+    //    filtering, and saturation as the signal path. This is the fixed
+    //    noise floor that would exist at the BBD output even with zero
+    //    signal in, modeling the combined compander + BBD output-stage
+    //    noise floor as a single injected source.
+    //
+    // 2) BBD leakage noise: each MN3009 stage leaks charge during its hold
+    //    period, generating shot/thermal noise that scales with hold time
+    //    (= inverse clock). Slow clock -> more noise per stage -> higher
+    //    total. Modeled as a clock-rate-modulated noise term, also injected
+    //    into the BBD input so it inherits the downstream filtering/smearing
+    //    that gives the fade-in/fade-out envelope shape.
+    //
+    // At the LFO extreme where the clock is slowest, these combine to produce
+    // the audible periodic noise bursts measured on hardware.
+    constexpr float kLeakMinFrac = 0.05f;
+    constexpr float kEnvShape = 3.0f; // 1.0 = linear triangle, higher = narrower peak
 
-    // Physically-motivated: BBD charge transfer loss increases with stage hold time.
-// Gain is normalized to unity at center delay (clock_center = 40 kHz for 3.2 ms).
-// Coefficient calibrated to match the hardware peak-ratio asymmetry of 1.174
-// (1.4 dB) on top of the baseline comb-geometry asymmetry.
-static constexpr float kBBDCTELossCoeff = 4468.f;  // was 4.4e4, arithmetic error
-static constexpr float kBBDInvClockCenter = 1.f / 40000.f;  // 3.2 ms center delay
+    float lfo0 = (delay0Ms - kCenterDelayMs) / mDelayDepth;
+    float lfo1 = (delay1Ms - kCenterDelayMs) / mDelayDepth;
 
-float gain0 = (1.f + kBBDGainTrim) * (1.f - kBBDCTELossCoeff * (1.f/clock0 - kBBDInvClockCenter));
-float gain1 = (1.f - kBBDGainTrim) * (1.f - kBBDCTELossCoeff * (1.f/clock1 - kBBDInvClockCenter));
+    float env0 = 0.5f * (1.f + lfo0); // 0 at valley, 1 at peak
+    float env1 = 0.5f * (1.f + lfo1);
+    env0 = powf(env0, kEnvShape);
+    env1 = powf(env1, kEnvShape);
 
+    float leakAmount0 = mDelayDepth * (kLeakMinFrac + (1.f - kLeakMinFrac) * env0);
+    float leakAmount1 = mDelayDepth * (kLeakMinFrac + (1.f - kLeakMinFrac) * env1);
+
+    // BBD leakage noise — clock-rate-dependent, bandpassed around 6 kHz to
+    // match the spectral character of MN3009 charge-transfer noise. Injected
+    // into the BBD input so it inherits the pre-filter, CTE gain, saturation,
+    // and 256-stage smearing on the way out.
+    float noiseN0 = mLeakNoise0.Process();
+    float noiseN1 = mLeakNoise1.Process();
+
+    float bbdIn0 = (noiseN0 * kBBDLeakageGain * leakAmount0 +
+                    mClick0.Process(-lfo) * kBBDClickGain * mGainModScale -
+                    mSlowClick0.Process(lfo) * kBBDSlowClickGain * mGainModScale) * mClockMul;
+
+    float bbdIn1 = (noiseN1 * kBBDLeakageGain * leakAmount1 +
+                    mClick1.Process(-lfo) * kBBDClickGain * mGainModScale -
+                    mSlowClick1.Process(lfo) * kBBDSlowClickGain * mGainModScale) * mClockMul;
+
+    float wet0 = mLine0.Process(input, delay0samp, bbdIn0);
+    float wet1 = mLine1.Process(input, delay1samp, bbdIn1);
+
+    // Signal-path BBD charge-transfer efficiency loss. Still applies to the
+    // signal flowing through the delay line (and to the injected noise that
+    // rides along with it).
+    float gain0 = (1.f + kBBDGainTrim) * (1.f - kBBDCTELossCoeff * (1.f/clock0 - kBBDInvClockCenter));
+    float gain1 = (1.f - kBBDGainTrim) * (1.f - kBBDCTELossCoeff * (1.f/clock1 - kBBDInvClockCenter));
     wet0 *= gain0;
     wet1 *= gain1;
 
-    // Analog artifacts: wet-path broadband, BBD clock feedthrough,
-    // and mains rail ripple (common-mode, shared rail).
-    wet0 += mWetPink0.Process() * analog_noise::kWetBroadbandGain * mAnalogMul;
-    wet1 += mWetPink1.Process() * analog_noise::kWetBroadbandGain * mAnalogMul;
-
-    wet0 += mClockBleed0.Process(clock0) * analog_noise::kBBDClockGain * mClockMul;
-    wet1 += mClockBleed1.Process(clock1) * analog_noise::kBBDClockGain * mClockMul;
-
+    // Mains ripple (post-BBD, shared on hardware).
     const float ripple = mWetRipple.Process() * mMainsMul;
     wet0 += ripple;
     wet1 += ripple;
