@@ -639,7 +639,7 @@ let aboutFrame=0;
 
 function buildAboutPixels(w,h){
   // Rasterize text into pixel array
-  const lines=['ULTRAMASTER','KR-106','2.5.11','BUILD 04-24 14:46']; // version and build date updated by Makefile
+  const lines=['ULTRAMASTER','KR-106','2.5.11','BUILD 04-24 17:26']; // version and build date updated by Makefile
   const pixels=[];
   const lineH=10; // 7px glyph + 3px gap
   const totalH=lines.length*lineH;

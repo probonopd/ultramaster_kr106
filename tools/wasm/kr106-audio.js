@@ -12,7 +12,7 @@
 //   synth.loadPreset(0);
 //   await synth.initMidi();
 
-const KR106_CACHE = '1777056366';
+const KR106_CACHE = '1777066003';
 
 class KR106Audio {
   constructor() {

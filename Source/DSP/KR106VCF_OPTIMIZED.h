@@ -194,7 +194,8 @@ struct VCF
   }
 
   static constexpr float kOTAScaleBase = 0.35f;
-
+  static constexpr float kInputCompressAmount = 2.0f;
+  
   // Circuit-derived constants for the BA662 OTA feedback path.
   //
   // Direct input gain (OscMix through 10K to filter input node):
@@ -244,58 +245,66 @@ struct VCF
       if (!mJ106Res) k = SoftClipK(k);
 
       // ---- Anti-aliasing at 1× OS ----
-      // At 1×, no decimator to attenuate near-Nyquist resonant peaks.
-      // Fade k directly so even broad (non-self-oscillating) peaks
-      // don't alias. At 2×/4× the decimators handle this.
       if (mOversample == 1 && frq > 0.7f)
       {
         float fade = std::max(1.f - (frq - 0.7f) / 0.2f, 0.f);
         k *= fade;
       }
 
-      mCacheK = k;
+      mCacheK = k; // cached PRE-compression k
 
-      // Peak-pull compensation — empirical fit from HW noise grid.
-      // A bilinear 4-pole TPT cascade intrinsically pulls its peak
-      // below nominal cutoff, but HW shows only a mild, roughly
-      // constant pull (~+150-300¢ across k=1..3.5, falling to 0 at
-      // k≥4). Theoretical linear-bilinear pull curve overcompensates
-      // at low k — likely because HW's BA662 loop has phase
-      // characteristics the ideal model doesn't capture. Fit is
-      // 3rd-order polynomial in k, calibrated directly to 10×10
-      // noise grid measurement.
-      float frqOver = std::min(frq * mOverScale, 0.85f);
+      // ... frqOver / overMax / mCacheG block stays here, all the peak-pull
+      // compensation math, etc. (unchanged)
+      float overMax;
+      switch (mOversample)
+      {
+        case 1:
+          overMax = 0.85f;
+          break;
+        case 2:
+          overMax = 0.46f;
+          break;
+        default:
+          overMax = 0.85f;
+          break;
+      }
+      float frqOver = std::min(frq * mOverScale, overMax);
       mCacheG = tanf(frqOver * static_cast<float>(M_PI) * 0.5f);
 
       float kFit = std::clamp(k, 0.f, 5.0f);
-      float logM = 0.20646f
-                 + kFit * (-0.04140f
-                          + kFit * (0.00602f
-                                   - kFit * 0.00127f));
-
-      // Fade out below k=1: no resonant peak to compensate for
-      // (filter is in pure-rolloff regime at low resonance).
+      float logM = 0.20646f + kFit * (-0.04140f + kFit * (0.00602f - kFit * 0.00127f));
       if (k < 1.0f) logM *= std::max(k, 0.f);
-
-      // Fade out above k=3.7: approaching and entering self-osc, the
-      // natural peak pull collapses to zero (HW data shows peak sits
-      // essentially on dacToHz target at R=127). Linear fade to zero
-      // by k=4.4 so self-osc pitch isn't pushed above target.
-      if (k > 3.7f) {
-          float fade = std::max(0.f, (4.4f - k) / 0.7f);
-          fade = std::min(1.f, fade);
-          logM *= fade;
+      if (k > 3.7f)
+      {
+        float fade = std::max(0.f, (4.4f - k) / 0.7f);
+        fade = std::min(1.f, fade);
+        logM *= fade;
       }
-
       mCacheG *= expf(logM);
-      mCacheG = std::min(mCacheG, 10.f);
-
-      // Guard against pushing g past where the TPT approximation stays
-      // well-behaved. 10.0 corresponds to digital cutoff ≈ 0.94 * Nyquist.
       mCacheG = std::min(mCacheG, 10.f);
     }
 
-    const float k = mCacheK; // post-fade effective k
+    // ---- Per-call (audio-rate input-dependent compression) ----
+    // Large-signal loop gain reduction at high cutoff. The BA662 feedback
+    // OTA has thin phase margin at high cutoff (g1 > ~0.35), and under
+    // loud input drive its operating point shifts enough to push small-
+    // signal loop gain below 1 — self-oscillation stops. At moderate
+    // cutoffs the loop has plenty of margin and sustains oscillation
+    // regardless of input level.
+    //
+    // Evidence: B15 Harpsichord preset (max FRQ, max R, active DCO) does
+    // not self-oscillate on HW, but HW does self-oscillate at max FRQ +
+    // max R with no oscillators, and at lower FRQ + max R with active
+    // oscillators. This gating produces exactly that combination.
+    //
+    // Runs per-call (not cached) because mInputEnv changes with signal.
+    const float g1Cached = mCacheG / (1.f + mCacheG);
+    const float g1Weight = std::max(0.f, (g1Cached - 0.35f) / 0.5f);
+    const float drive = mInputEnv;
+    const float kCompress = 1.f / (1.f + drive * g1Weight * kInputCompressAmount);
+    const float k = mCacheK * kCompress;
+
+    // ---- Derived coefficients from compressed k ----
     const float g = mCacheG;
     const float g1 = g / (1.f + g);
     const float g1_2 = g1 * g1;
@@ -312,14 +321,10 @@ struct VCF
 
     mC.otaScale = kOTAScaleBase;
 
-    // Feedback saturation drive. Fit empirically so kFbScale reaches
-    // ~4.2 at/above self-osc threshold (k≥3.5) and collapses to a
-    // floor of 1.26 at k≤2.5 so passband signals stay linear.
     float baseFbScale = 4.20f * std::clamp((k - 2.5f) * 1.0f, 0.3f, 1.f);
     mC.kFbScale = baseFbScale;
     mC.invKFbScale = 1.f / mC.kFbScale;
 
-    // Adaptive noise level — control rate.
     {
       float stateEnergy = fabsf(mS[0]) + fabsf(mS[1]) + fabsf(mS[2]) + fabsf(mS[3]);
       float energy = std::max(mInputEnv, stateEnergy);

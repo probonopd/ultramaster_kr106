@@ -516,15 +516,13 @@ public:
       }
     }
 
-    // uPC1252H2 VCA output pole: one-pole LPF on the oversampled mix bus
-    // before decimation. Tames HF oscillator content that would alias
-    // through the half-band decimator.
+    // 1-pole LPF on the oversampled mix bus before decimation.
     {
       const int nOS = nFrames * mOversample;
-      for (int s = 0; s < nOS; s++)
+      for (int k = 0; k < nOS; k++)
       {
-        mMixLPState += mMixLPCoeff * (mMixBusOS[s] - mMixLPState);
-        mMixBusOS[s] = mMixLPState;
+        mBusLPState += mBusLPCoeff * (mMixBusOS[k] - mBusLPState);
+        mMixBusOS[k] = mBusLPState;
       }
     }
 
@@ -653,11 +651,13 @@ public:
     mPostVcaLPCoeff = 1.f - expf(-2.f * static_cast<float>(M_PI) * kPostVcaFc / mSampleRate);
     mPostVcaLPState = 0.f;
 
-    // Mix bus LPF: one-pole at oversampled rate, tames HF before decimator.
-    static constexpr float kMixLPFc = 30000.f;
-    float fsOS = mSampleRate * static_cast<float>(mOversample);
-    mMixLPCoeff = 1.f - expf(-2.f * static_cast<float>(M_PI) * kMixLPFc / fsOS);
-    mMixLPState = 0.f;
+    // Mix bus LPF: 1-pole at 30 kHz on oversampled rate before decimator.
+    {
+      static constexpr float fc = 30000.f;
+      float fsOS = mSampleRate * static_cast<float>(mOversample);
+      mBusLPCoeff = 1.f - expf(-2.f * static_cast<float>(M_PI) * fc / fsOS);
+      mBusLPState = 0.f;
+    }
 
     // Saw tables are clocked at the base sample rate — the oscillator
     // runs at 1×, and its output is upsampled per-voice into the 4×
@@ -772,8 +772,8 @@ public:
   float mVcaLevelSmooth = 1.f;
   float mPostVcaLPState = 0.f;   // one-pole LPF after VCA level, before chorus
   float mPostVcaLPCoeff = 1.f;   // coefficient (1.0 = bypassed)
-  float mMixLPState = 0.f;       // oversampled mix bus LPF state
-  float mMixLPCoeff = 0.f;       // oversampled mix bus LPF coefficient
+  float mBusLPState = 0.f;       // 1-pole mix bus LPF (oversampled rate)
+  float mBusLPCoeff = 0.f;
   float mDacSmoothCoeff = 0.f;  // 1ms RC filter coefficient (shared by all CV smoothers)
   float mMasterVol = 1.f;
   float mMasterVolSmooth = 1.f;
@@ -901,11 +901,13 @@ public:
       // os == 1: no decimator runs at all, nothing to prime.
     }
 
-    // Recompute mix bus LPF coefficient for new oversampled rate
-    static constexpr float kMixLPFc = 30000.f;
-    float fsOS = mSampleRate * static_cast<float>(mOversample);
-    mMixLPCoeff = 1.f - expf(-2.f * static_cast<float>(M_PI) * kMixLPFc / fsOS);
-    mMixLPState = 0.f;
+    // Recompute mix bus LPF for new oversampled rate
+    {
+      static constexpr float fc = 30000.f;
+      float fsOS = mSampleRate * static_cast<float>(mOversample);
+      mBusLPCoeff = 1.f - expf(-2.f * static_cast<float>(M_PI) * fc / fsOS);
+      mBusLPState = 0.f;
+    }
   }
 
   void SetKeyTranspose(int semitones)
